@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import {
   Archive,
@@ -25,6 +25,9 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+import { useCompilerStore } from '@/store/compiler-store'
+import { HelpHint } from './HelpHint'
+import { PathPicker } from './PathPicker'
 import {
   commands,
   type BuildArtifact,
@@ -32,60 +35,77 @@ import {
   type BuildFinishedEvent,
   type BuildLogEvent,
   type BuildProgressEvent,
-  type BuildRequest,
   type EnvironmentReport,
   type PackageMode,
   type SdkResolution,
+  type SdkVersionOption,
 } from '@/lib/tauri-bindings'
 
 type BuildState = 'idle' | 'running' | 'success' | 'failed'
 
-const defaultRequest: BuildRequest = {
-  plugin_root: 'E:\\Boghma\\boghma hub\\Done Paid\\Boghma-WaterMark',
-  module_name: 'postwatermark',
-  package_name: 'Boghma WaterMark',
-  versions: ['2025', '2026'],
-  configuration: 'Release',
-  sdk_source: 'ConfiguredThenInstalledThenOfficial',
-  package_mode: 'Both',
-  zip_enabled: true,
-  clean_output: true,
-  refresh_sdk_cache: false,
-  output_dir: null,
-}
-
-function parseVersionInput(value: string) {
-  const rangeMatch = value.match(/^(\d{4})\s*-\s*(\d{4})$/)
-  if (rangeMatch) {
-    const start = Number(rangeMatch[1])
-    const end = Number(rangeMatch[2])
-    if (start <= end) {
-      return Array.from({ length: end - start + 1 }, (_, index) =>
-        String(start + index)
-      )
-    }
-  }
-
-  return value
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
 export function CompilerWorkbench() {
-  const [request, setRequest] = useState<BuildRequest>(defaultRequest)
+  const request = useCompilerStore(state => state.request)
+  const updateRequest = useCompilerStore(state => state.updateRequest)
+  const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
+  const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
   const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
   const [sdkResolutions, setSdkResolutions] = useState<SdkResolution[]>([])
+  const [sdkVersions, setSdkVersions] = useState<SdkVersionOption[]>([])
   const [logs, setLogs] = useState<BuildLogEvent[]>([])
   const [artifacts, setArtifacts] = useState<BuildArtifact[]>([])
   const [progress, setProgress] = useState<BuildProgressEvent | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [state, setState] = useState<BuildState>('idle')
+  const sdkStartVersionRef = useRef(sdkStartVersion)
 
-  const versionText = useMemo(() => request.versions.join(', '), [request])
+  const versionNames = useMemo(
+    () => sdkVersions.map(version => version.version),
+    [sdkVersions]
+  )
 
   useEffect(() => {
-    void refreshEnvironment()
+    sdkStartVersionRef.current = sdkStartVersion
+  }, [sdkStartVersion])
+
+  useEffect(() => {
+    async function loadInitialEnvironment() {
+      const result = await commands.detectEnvironment()
+      if (result.status === 'ok') {
+        setEnvironment(result.data)
+      } else {
+        setLogs(current => [
+          ...current,
+          { job_id: 'system', level: 'error', message: result.error },
+        ])
+      }
+    }
+
+    async function loadInitialSdkVersions() {
+      const result = await commands.listSdkVersions()
+      if (result.status === 'ok') {
+        setSdkVersions(result.data)
+        const nextVersion = result.data[0]?.version
+        if (
+          nextVersion &&
+          !result.data.some(
+            version => version.version === sdkStartVersionRef.current
+          )
+        ) {
+          setSdkStartVersion(
+            nextVersion,
+            result.data.map(version => version.version)
+          )
+        }
+      } else {
+        setLogs(current => [
+          ...current,
+          { job_id: 'system', level: 'error', message: result.error },
+        ])
+      }
+    }
+
+    void loadInitialEnvironment()
+    void loadInitialSdkVersions()
 
     const unlisten = Promise.all([
       listen<BuildLogEvent>('build://log', event => {
@@ -113,7 +133,31 @@ export function CompilerWorkbench() {
     return () => {
       void unlisten.then(items => items.forEach(item => item()))
     }
-  }, [])
+  }, [setSdkStartVersion])
+
+  async function refreshSdkVersions() {
+    const result = await commands.listSdkVersions()
+    if (result.status === 'ok') {
+      setSdkVersions(result.data)
+      const nextVersion = result.data[0]?.version
+      if (
+        nextVersion &&
+        !result.data.some(
+          version => version.version === sdkStartVersionRef.current
+        )
+      ) {
+        setSdkStartVersion(
+          nextVersion,
+          result.data.map(version => version.version)
+        )
+      }
+    } else {
+      setLogs(current => [
+        ...current,
+        { job_id: 'system', level: 'error', message: result.error },
+      ])
+    }
+  }
 
   async function refreshEnvironment() {
     const result = await commands.detectEnvironment()
@@ -160,12 +204,8 @@ export function CompilerWorkbench() {
     setState('idle')
   }
 
-  function updateRequest(patch: Partial<BuildRequest>) {
-    setRequest(current => ({ ...current, ...patch }))
-  }
-
   return (
-    <div className="grid h-full grid-cols-[minmax(340px,420px)_1fr] overflow-hidden">
+    <div className="grid h-full grid-cols-[minmax(320px,390px)_1fr] overflow-hidden">
       <aside className="flex min-h-0 flex-col border-r bg-muted/20">
         <div className="border-b px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -178,16 +218,21 @@ export function CompilerWorkbench() {
         </div>
         <ScrollArea className="flex-1">
           <div className="space-y-4 p-4">
-            <Field label="Plugin Root">
-              <Input
+            <Field
+              label="Plugin Root"
+              help="Choose the Cinema 4D plugin module folder that contains project, source, and optional res folders."
+            >
+              <PathPicker
                 value={request.plugin_root}
-                onChange={event =>
-                  updateRequest({ plugin_root: event.target.value })
-                }
+                title="Choose plugin root"
+                onChange={value => updateRequest({ plugin_root: value })}
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Module">
+              <Field
+                label="Module"
+                help="CMake target/module folder name under the SDK plugins path."
+              >
                 <Input
                   value={request.module_name}
                   onChange={event =>
@@ -195,7 +240,10 @@ export function CompilerWorkbench() {
                   }
                 />
               </Field>
-              <Field label="Package">
+              <Field
+                label="Package"
+                help="Display/package folder name used when generating output artifacts."
+              >
                 <Input
                   value={request.package_name}
                   onChange={event =>
@@ -204,18 +252,38 @@ export function CompilerWorkbench() {
                 />
               </Field>
             </div>
-            <Field label="Versions">
-              <Input
-                value={versionText}
-                onChange={event =>
-                  updateRequest({
-                    versions: parseVersionInput(event.target.value),
-                  })
-                }
-              />
+            <Field
+              label="C4D Versions"
+              help="Build versions come from configured SDKs. Pick a start version and all later versions are selected automatically."
+            >
+              <Select
+                value={sdkStartVersion}
+                onValueChange={value => setSdkStartVersion(value, versionNames)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {sdkVersions.map(version => (
+                    <SelectItem key={version.version} value={version.version}>
+                      {version.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {request.versions.map(version => (
+                  <Badge key={version} variant="outline">
+                    {version}
+                  </Badge>
+                ))}
+              </div>
             </Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Configuration">
+              <Field
+                label="Configuration"
+                help="Choose Debug, Release, or both CMake build configurations."
+              >
                 <Select
                   value={request.configuration}
                   onValueChange={value =>
@@ -234,7 +302,10 @@ export function CompilerWorkbench() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Package Mode">
+              <Field
+                label="Package Mode"
+                help="Merged creates one package with all versions. Per Version creates a folder per version/configuration. Both creates both layouts."
+              >
                 <Select
                   value={request.package_mode}
                   onValueChange={value =>
@@ -252,24 +323,28 @@ export function CompilerWorkbench() {
                 </Select>
               </Field>
             </div>
-            <Field label="Output Dir">
-              <Input
+            <Field
+              label="Output Dir"
+              help="Choose where generated package folders and zip archives are written. Empty uses Plugin Root\\dist."
+            >
+              <PathPicker
                 value={request.output_dir ?? ''}
                 placeholder="Plugin root\\dist"
-                onChange={event =>
-                  updateRequest({ output_dir: event.target.value || null })
-                }
+                title="Choose output directory"
+                onChange={value => updateRequest({ output_dir: value || null })}
               />
             </Field>
             <div className="grid grid-cols-3 gap-2">
               <Toggle
                 checked={request.zip_enabled}
                 label="Zip"
+                help="Create zip archives beside generated package folders."
                 onCheckedChange={value => updateRequest({ zip_enabled: value })}
               />
               <Toggle
                 checked={request.clean_output}
                 label="Clean"
+                help="Remove existing output folders before packaging."
                 onCheckedChange={value =>
                   updateRequest({ clean_output: value })
                 }
@@ -277,6 +352,7 @@ export function CompilerWorkbench() {
               <Toggle
                 checked={request.refresh_sdk_cache}
                 label="Refresh SDK"
+                help="Re-extract cached SDK archives before the next build."
                 onCheckedChange={value =>
                   updateRequest({ refresh_sdk_cache: value })
                 }
@@ -290,6 +366,7 @@ export function CompilerWorkbench() {
               >
                 <Play className="size-4" />
                 Build
+                <HelpHint text="Resolve SDKs, configure CMake, build the selected module, then package generated binaries." />
               </Button>
               <Button
                 variant="outline"
@@ -303,7 +380,10 @@ export function CompilerWorkbench() {
                 variant="outline"
                 size="icon"
                 title="Refresh environment"
-                onClick={() => void refreshEnvironment()}
+                onClick={() => {
+                  void refreshEnvironment()
+                  void refreshSdkVersions()
+                }}
               >
                 <RefreshCw className="size-4" />
               </Button>
@@ -422,6 +502,7 @@ export function CompilerWorkbench() {
                       >
                         <FolderOpen className="size-3.5" />
                         Open
+                        <HelpHint text="Open this generated artifact in the system file manager." />
                       </Button>
                     </div>
                   ))
@@ -437,14 +518,19 @@ export function CompilerWorkbench() {
 
 function Field({
   label,
+  help,
   children,
 }: {
   label: string
+  help: string
   children: React.ReactNode
 }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>{label}</span>
+        <HelpHint text={help} />
+      </Label>
       {children}
     </div>
   )
@@ -453,10 +539,12 @@ function Field({
 function Toggle({
   checked,
   label,
+  help,
   onCheckedChange,
 }: {
   checked: boolean
   label: string
+  help: string
   onCheckedChange: (checked: boolean) => void
 }) {
   return (
@@ -466,6 +554,7 @@ function Toggle({
         onCheckedChange={value => onCheckedChange(Boolean(value))}
       />
       <span className="truncate">{label}</span>
+      <HelpHint text={help} />
     </label>
   )
 }

@@ -14,6 +14,7 @@ import { useTheme } from '@/hooks/use-theme'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { cn } from '@/lib/utils'
 import { useIsWindows } from '@/hooks/use-platform'
+import { useUIStore } from '@/store/ui-store'
 
 /**
  * Layout sizing configuration for resizable panels.
@@ -21,9 +22,9 @@ import { useIsWindows } from '@/hooks/use-platform'
  * Sidebar defaults + main default must equal 100.
  */
 const LAYOUT = {
-  leftSidebar: { default: 0, min: 0, max: 0 },
-  rightSidebar: { default: 0, min: 0, max: 0 },
-  main: { min: 100 },
+  leftSidebar: { default: 26, min: 20, max: 36 },
+  rightSidebar: { default: 24, min: 18, max: 34 },
+  main: { min: 38 },
 } as const
 
 // Main content default is calculated to ensure totals sum to 100%
@@ -32,8 +33,8 @@ const MAIN_CONTENT_DEFAULT =
 
 export function MainWindow() {
   const { theme } = useTheme()
-  const leftSidebarVisible = false
-  const rightSidebarVisible = false
+  const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
+  const rightSidebarVisible = useUIStore(state => state.rightSidebarVisible)
   const isWindows = useIsWindows()
   // Set up global event listeners (keyboard shortcuts, etc.)
   useMainWindowEventListeners()

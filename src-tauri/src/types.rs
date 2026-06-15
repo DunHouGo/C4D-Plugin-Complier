@@ -3,7 +3,6 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 /// Maximum size for recovery data files (10MB)
@@ -99,6 +98,7 @@ pub struct EnvironmentReport {
     pub visual_studio: ToolStatus,
     pub windows_sdk: ToolStatus,
     pub installed_sdk_zips: Vec<InstalledSdkZip>,
+    pub installed_c4d_versions: Vec<InstalledC4dVersion>,
     pub cache_root: String,
 }
 
@@ -107,6 +107,14 @@ pub struct InstalledSdkZip {
     pub version: String,
     pub path: String,
     pub size_bytes: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct InstalledC4dVersion {
+    pub version: String,
+    pub path: String,
+    pub sdk_version: String,
+    pub download_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -123,6 +131,17 @@ pub struct SdkResolution {
     pub source: SdkResolutionSource,
     pub sdk_root: Option<String>,
     pub archive_path: Option<String>,
+    pub download_url: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SdkVersionOption {
+    pub version: String,
+    pub label: String,
+    pub configured: bool,
+    pub sdk_root: Option<String>,
+    pub sdk_zip: Option<String>,
     pub download_url: Option<String>,
     pub status: String,
 }
@@ -158,13 +177,28 @@ pub struct BuildFinishedEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SdkRootConfig {
+    pub sdk_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SdkSourceOverride {
     pub sdk_root: Option<String>,
     pub sdk_zip: Option<String>,
     pub download_url: Option<String>,
 }
 
-pub type SdkSourceConfig = BTreeMap<String, SdkSourceOverride>;
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SdkSourceConfig {
+    pub sdk_root: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SdkAutoConfigReport {
+    pub sdk_root: Option<String>,
+    pub installed_versions: Vec<InstalledC4dVersion>,
+    pub versions: Vec<SdkVersionOption>,
+}
 
 impl Default for AppPreferences {
     fn default() -> Self {

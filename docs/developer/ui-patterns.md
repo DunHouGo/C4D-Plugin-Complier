@@ -341,6 +341,16 @@ For panels that toggle visibility, prefer CSS over conditional rendering:
 
 This preserves scroll position, form state, and resize dimensions.
 
+### Compiler Sidebars
+
+The compiler screen uses the title bar panel buttons as first-class workflow controls:
+
+- Left sidebar: SDK Sources, including Cinema 4D 2024.4+ SDK root, archive, and download URL configuration.
+- Right sidebar: Output Preview, a derived file tree for the current build request.
+- Center workbench: build parameters, environment status, logs, and artifacts.
+
+Keep build request state in `useCompilerStore` when data must be shared between the workbench and sidebars. Path-related compiler controls should use `PathPicker` so users can type, choose from the native dialog, or drop a file/folder onto the field.
+
 ## Best Practices
 
 ### Do

@@ -8,7 +8,7 @@ describe('App', () => {
   it('renders main window layout', () => {
     render(<App />)
     expect(
-      screen.getByRole('heading', { name: /hello world/i })
+      screen.getByText(/C4D Plugin Compiler/i)
     ).toBeInTheDocument()
   })
 

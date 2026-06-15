@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { FileTreePreview } from '@/components/compiler/FileTreePreview'
 
 interface RightSideBarProps {
   children?: React.ReactNode
@@ -8,9 +9,12 @@ interface RightSideBarProps {
 export function RightSideBar({ children, className }: RightSideBarProps) {
   return (
     <div
-      className={cn('flex h-full flex-col border-l bg-background', className)}
+      className={cn(
+        'flex h-full min-w-0 flex-col border-l bg-background',
+        className
+      )}
     >
-      {children}
+      {children ?? <FileTreePreview />}
     </div>
   )
 }

@@ -21,14 +21,20 @@
  * @see docs/developer/tauri-commands.md for full documentation
  */
 
-export { commands, type Result } from './bindings'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
+import {
+  commands as generatedCommands,
+  type Result,
+  type EnvironmentReport as GeneratedEnvironmentReport,
+  type SdkVersionOption,
+} from './bindings'
+
 export type {
   AppPreferences,
   BuildArtifact,
   BuildConfiguration,
   BuildJobId,
   BuildRequest,
-  EnvironmentReport,
   InstalledSdkZip,
   JsonValue,
   PackageMode,
@@ -36,8 +42,64 @@ export type {
   SdkResolution,
   SdkResolutionSource,
   SdkSourceMode,
+  SdkSourceOverride,
+  SdkVersionOption,
   ToolStatus,
 } from './bindings'
+
+export type { Result }
+
+export interface InstalledC4dVersion {
+  version: string
+  path: string
+  sdk_version: string
+  download_url: string
+}
+
+export interface EnvironmentReport extends GeneratedEnvironmentReport {
+  installed_c4d_versions: InstalledC4dVersion[]
+}
+
+export interface SdkSourceConfig {
+  sdk_root: string | null
+}
+
+export interface SdkRootConfig {
+  sdk_root: string | null
+}
+
+export interface SdkAutoConfigReport {
+  sdk_root: string | null
+  installed_versions: InstalledC4dVersion[]
+  versions: SdkVersionOption[]
+}
+
+async function invokeResult<T>(
+  command: string,
+  args?: Record<string, unknown>
+): Promise<Result<T, string>> {
+  try {
+    return { status: 'ok', data: await tauriInvoke<T>(command, args) }
+  } catch (error) {
+    if (error instanceof Error) throw error
+    return { status: 'error', error: String(error) }
+  }
+}
+
+export const commands = {
+  ...generatedCommands,
+  detectEnvironment: async () =>
+    (await generatedCommands.detectEnvironment()) as Result<
+      EnvironmentReport,
+      string
+    >,
+  loadSdkSources: async () =>
+    (await generatedCommands.loadSdkSources()) as Result<SdkSourceConfig, string>,
+  saveSdkRootConfig: (config: SdkRootConfig) =>
+    invokeResult<SdkSourceConfig>('save_sdk_root_config', { config }),
+  autoConfigureSdkSources: () =>
+    invokeResult<SdkAutoConfigReport>('auto_configure_sdk_sources'),
+}
 
 export interface BuildLogEvent {
   job_id: string

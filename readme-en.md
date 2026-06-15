@@ -1,38 +1,48 @@
 # C4D Plugin Compiler User Guide
 
-C4D Plugin Compiler is a Rust and Tauri 2 desktop tool for building and packaging Cinema 4D C++ plugins. It prepares SDKs for selected Cinema 4D versions, checks the CMake and Visual Studio environment, builds through the official CMake preset workflow, and creates merged, per-version, and zip release artifacts.
+C4D Plugin Compiler is a Rust and Tauri 2 desktop tool for building and packaging Cinema 4D C++ plugins. It manages C++ SDK sources for Cinema 4D 2024.4 and newer, checks CMake, Visual Studio 2022, and Windows SDK availability, builds plugins through Maxon's official CMake preset workflow, and creates merged, per-version, and zip release artifacts.
 
-## Parameters
+## Main Interface
 
-- Plugin Root: plugin source root, usually containing `project/`, `source/`, and `res/`.
+- Top left sidebar button: shows or hides the SDK Sources panel for SDK download and local path configuration.
+- Top right sidebar button: shows or hides the Output Preview panel for generated file tree previews.
+- Center workbench: edit plugin build parameters, inspect environment status, resolve SDKs, run builds, and review logs and artifacts.
+
+## SDK Sources Parameters
+
+- SDK Root: one shared SDK root folder. Use a path without spaces, such as `Documents\Maxon_SDK`. The tool creates version folders such as `2024_4`, `2025`, and `2026` under it.
+- Auto Detect: detects locally installed Cinema 4D major versions, selects the smallest matching C++ SDK for each major version, such as `Cinema_4D_CPP_SDK_2026_0_0.zip` for 2026, and saves the default SDK root.
+- Save: writes the current SDK root to `configs/sdk_sources.json`.
+- Refresh: reloads the SDK root, local Cinema 4D installs, and available SDK list.
+- SDK Matrix: available SDK versions. When local Cinema 4D installs are detected, the minimum supported version starts from the oldest installed local version. Extracted SDKs show as Ready; missing SDKs are downloaded from Maxon during resolve or build.
+- Installed C4D: detected local Cinema 4D installs and the SDK version mapped to each major version.
+
+SDK resolution order is: extracted SDKs under `SDK Root\<version>\sdk`, downloaded archives under `SDK Root\<version>\downloads`, then the official Maxon download URL. Installed Cinema 4D `sdk.zip` files are kept as a compatibility source. Automatic download URLs use Maxon's common pattern, such as `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2026_0_0.zip`, `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2025_0_1.zip`, and `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2024_4_0.zip`.
+
+## Build Parameters
+
+- Plugin Root: plugin source root, usually containing `project/`, `source/`, and optional `res/`. Supports directory picker and drag-and-drop.
 - Module: C4D SDK module name and CMake target name, such as `postwatermark`.
 - Package: release package name and output plugin folder name.
-- Versions: target C4D major versions separated by commas, such as `2025, 2026`.
+- C4D Versions: version tags generated from the SDK Sources start version.
 - Configuration: build mode, one of `Debug`, `Release`, or `Both`.
 - Package Mode: packaging mode, one of `Merged`, `Per Version`, or `Both`.
-- Output Dir: artifact output folder; defaults to `dist` under the plugin root.
+- Output Dir: artifact output folder. Empty uses `Plugin Root\dist`. Supports directory picker and drag-and-drop.
 - Zip: create zip archives.
 - Clean: remove old output folders before packaging.
-- Refresh SDK: ignore existing SDK cache and re-extract or re-download.
+- Refresh SDK: re-extract or re-download cached SDKs.
+- Build: resolves SDKs, configures CMake, builds the module, and packages artifacts.
+- Resolve SDKs: resolves SDK sources and refreshes the SDK Matrix without building.
+- Refresh Environment: rechecks CMake, Visual Studio 2022, Windows SDK, and SDK configuration.
+- Cancel: marks the current build job as cancelled.
 
-## SDK Sources
+## Output Preview
 
-The tool resolves SDKs in this order:
-
-- `sdk_root`, `sdk_zip`, or `download_url` from `configs/sdk_sources.json`.
-- Installed `C:\Program Files\Maxon Cinema 4D <version>\sdk.zip`.
-- The latest official C++ SDK URL from Maxon's `downloads.json`.
-
-## Workflow
-
-- Refresh the environment report to check CMake, Visual Studio 2022, and Windows SDK.
-- Fill in the plugin root, module name, package name, and versions.
-- Resolve SDKs to preview the source for each version.
-- Start the build.
-- Open generated artifacts from the Artifacts panel.
+The right Output Preview panel derives a file tree from the current Package, C4D Versions, Configuration, Package Mode, Output Dir, and Zip settings. It does not write files; it previews the package folders, `.xdl64` binaries, copied `res` location, and zip archives that will be generated.
 
 ## Notes
 
-- The first version focuses on Windows.
-- Building C4D C++ plugins still requires CMake, Visual Studio 2022, and the matching C4D SDK.
-- Cancel marks a job as cancelled; the current version does not force-kill an already running CMake child process.
+- This version focuses on the Windows build workflow.
+- Building C4D C++ plugins still requires CMake, Visual Studio 2022, and matching SDKs.
+- Path fields can be typed manually, selected with the folder button, or filled by dropping a file or folder on the field.
+- Cancel does not force-kill an already running CMake child process.

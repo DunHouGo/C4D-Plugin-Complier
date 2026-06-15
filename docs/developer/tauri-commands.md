@@ -221,15 +221,25 @@ vi.mock('@/lib/tauri-bindings', () => ({
 
 ## Available Commands
 
-| Command                   | Parameters                            | Returns                          | Description         |
-| ------------------------- | ------------------------------------- | -------------------------------- | ------------------- |
-| `greet`                   | `name: string`                        | `string`                         | Simple greeting     |
-| `loadPreferences`         | none                                  | `Result<AppPreferences, string>` | Load preferences    |
-| `savePreferences`         | `preferences: AppPreferences`         | `Result<null, string>`           | Save preferences    |
-| `sendNativeNotification`  | `title: string, body: string \| null` | `Result<null, string>`           | System notification |
-| `saveEmergencyData`       | `filename: string, data: JsonValue`   | `Result<null, string>`           | Save recovery data  |
-| `loadEmergencyData`       | `filename: string`                    | `Result<JsonValue, string>`      | Load recovery data  |
-| `cleanupOldRecoveryFiles` | none                                  | `Result<number, string>`         | Cleanup old files   |
+| Command                   | Parameters                                   | Returns                              | Description                                   |
+| ------------------------- | -------------------------------------------- | ------------------------------------ | --------------------------------------------- |
+| `greet`                   | `name: string`                               | `string`                             | Simple greeting                               |
+| `loadPreferences`         | none                                         | `Result<AppPreferences, string>`     | Load preferences                              |
+| `savePreferences`         | `preferences: AppPreferences`                | `Result<null, string>`               | Save preferences                              |
+| `sendNativeNotification`  | `title: string, body: string \| null`        | `Result<null, string>`               | System notification                           |
+| `saveEmergencyData`       | `filename: string, data: JsonValue`          | `Result<null, string>`               | Save recovery data                            |
+| `loadEmergencyData`       | `filename: string`                           | `Result<JsonValue, string>`          | Load recovery data                            |
+| `cleanupOldRecoveryFiles` | none                                         | `Result<number, string>`             | Cleanup old files                             |
+| `detectEnvironment`       | none                                         | `Result<EnvironmentReport, string>`  | Detect build tools and installed SDK archives |
+| `resolveSdkVersions`      | `request: BuildRequest`                      | `Result<SdkResolution[], string>`    | Resolve SDK source for requested versions     |
+| `listSdkVersions`         | none                                         | `Result<SdkVersionOption[], string>` | List Cinema 4D 2024.4+ SDK options            |
+| `loadSdkSources`          | none                                         | `Result<SdkSourceConfig, string>`    | Load SDK source configuration                 |
+| `saveSdkSource`           | `version: string, source: SdkSourceOverride` | `Result<SdkVersionOption, string>`   | Save SDK root, zip, or URL for a version      |
+| `removeSdkSource`         | `version: string`                            | `Result<SdkVersionOption[], string>` | Remove custom SDK source for a version        |
+| `startBuild`              | `request: BuildRequest`                      | `Result<BuildJobId, string>`         | Start compiler job                            |
+| `cancelBuild`             | `jobId: string`                              | `Result<boolean, string>`            | Cancel compiler job                           |
+| `listArtifacts`           | `jobId: string`                              | `Result<BuildArtifact[], string>`    | List build artifacts                          |
+| `openArtifactFolder`      | `path: string`                               | `Result<null, string>`               | Open artifact folder                          |
 
 ## Dependencies
 

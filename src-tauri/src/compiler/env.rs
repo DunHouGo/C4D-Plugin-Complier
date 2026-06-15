@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::compiler::local_data_root;
+use crate::compiler::sdk;
 use crate::types::{EnvironmentReport, InstalledSdkZip, ToolStatus};
 
 pub fn detect_environment() -> EnvironmentReport {
@@ -12,6 +13,7 @@ pub fn detect_environment() -> EnvironmentReport {
     let visual_studio = detect_visual_studio();
     let windows_sdk = detect_windows_sdk();
     let installed_sdk_zips = detect_installed_sdk_zips();
+    let installed_c4d_versions = sdk::detect_installed_c4d_versions();
     let cache_root = local_data_root()
         .map(|path| path.display().to_string())
         .unwrap_or_else(|error| error);
@@ -23,6 +25,7 @@ pub fn detect_environment() -> EnvironmentReport {
         visual_studio,
         windows_sdk,
         installed_sdk_zips,
+        installed_c4d_versions,
         cache_root,
     }
 }
