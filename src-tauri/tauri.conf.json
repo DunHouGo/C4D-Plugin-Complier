@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "C4D Plugin Compiler",
+  "version": "0.1.0",
+  "identifier": "com.boghma.c4d-plugin-compiler",
+  "build": {
+    "removeUnusedCommands": true,
+    "beforeDevCommand": "vpr dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "vpr build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "C4D Plugin Compiler",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 1100,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "maximized": false,
+        "center": true,
+        "decorations": true,
+        "alwaysOnTop": false,
+        "transparent": false,
+        "shadow": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' tauri: ipc: http://ipc.localhost"
+    },
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "createUpdaterArtifacts": true,
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "Boghma",
+    "category": "DeveloperTool",
+    "shortDescription": "Cinema 4D plugin compiler and packager",
+    "longDescription": "A Rust and Tauri desktop tool for preparing Cinema 4D SDKs, building multi-version C++ plugins, and packaging release artifacts.",
+    "copyright": "Copyright 2026 Boghma. All rights reserved.",
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-",
+      "providerShortName": null,
+      "entitlements": null,
+      "exceptionDomain": ""
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
+      "pubkey": "YOUR_UPDATER_PUBLIC_KEY_HERE"
+    }
+  }
+}

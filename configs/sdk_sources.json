@@ -1,0 +1,17 @@
+{
+  "2024": {
+    "sdk_root": null,
+    "sdk_zip": null,
+    "download_url": null
+  },
+  "2025": {
+    "sdk_root": null,
+    "sdk_zip": "C:\\Program Files\\Maxon Cinema 4D 2025\\sdk.zip",
+    "download_url": null
+  },
+  "2026": {
+    "sdk_root": null,
+    "sdk_zip": "C:\\Program Files\\Maxon Cinema 4D 2026\\sdk.zip",
+    "download_url": null
+  }
+}
