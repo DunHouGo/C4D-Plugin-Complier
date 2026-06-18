@@ -25,20 +25,13 @@ const KNOWN_SDK_VERSIONS: &[&str] = &["2024.4", "2025", "2026"];
 pub fn available_sdk_versions() -> Vec<SdkVersionOption> {
     let config = load_sdk_source_config().unwrap_or_else(|_| default_sdk_source_config());
     let installed_versions = detect_installed_c4d_versions();
-    let min_version = installed_versions
-        .iter()
-        .map(|item| item.sdk_version.as_str())
-        .min_by_key(|version| version_sort_key(version))
-        .unwrap_or(DEFAULT_MIN_SDK_VERSION);
     let mut versions = BTreeSet::new();
 
-    if installed_versions.is_empty() {
-        versions.extend(
-            KNOWN_SDK_VERSIONS
-                .iter()
-                .map(|version| (*version).to_string()),
-        );
-    }
+    versions.extend(
+        KNOWN_SDK_VERSIONS
+            .iter()
+            .map(|version| (*version).to_string()),
+    );
     versions.extend(
         installed_versions
             .iter()
@@ -47,7 +40,7 @@ pub fn available_sdk_versions() -> Vec<SdkVersionOption> {
 
     versions
         .into_iter()
-        .filter(|version| version_sort_key(version) >= version_sort_key(min_version))
+        .filter(|version| version_sort_key(version) >= version_sort_key(DEFAULT_MIN_SDK_VERSION))
         .map(|version| sdk_version_option(&version, &config))
         .collect()
 }
@@ -126,7 +119,7 @@ pub fn prepare_sdk(version: &str, refresh: bool) -> Result<SdkResolution, String
     let resolution = resolve_sdk_version(version, refresh);
     if let Some(root) = &resolution.sdk_root {
         let path = PathBuf::from(root);
-        if is_cmake_sdk_root(&path) {
+        if is_cmake_sdk_root(&path) || is_legacy_sdk_root(&path) {
             return Ok(resolution);
         }
     }
@@ -136,28 +129,44 @@ pub fn prepare_sdk(version: &str, refresh: bool) -> Result<SdkResolution, String
             let Some(archive_path) = resolution.archive_path.clone() else {
                 return Err(format!("SDK {version} did not resolve to an archive path"));
             };
-            let sdk_root = extract_sdk_archive(Path::new(&archive_path), version, refresh)?;
-            Ok(SdkResolution {
-                sdk_root: Some(sdk_root.display().to_string()),
-                status: "ready".to_string(),
-                ..resolution
-            })
+            match extract_sdk_archive(Path::new(&archive_path), version, refresh) {
+                Ok(sdk_root) => Ok(SdkResolution {
+                    sdk_root: Some(sdk_root.display().to_string()),
+                    status: "ready".to_string(),
+                    ..resolution
+                }),
+                Err(extract_error) => prepare_official_sdk(version, Some(extract_error)),
+            }
         }
-        SdkResolutionSource::OfficialDownload => {
-            let Some(download_url) = resolution.download_url.clone() else {
-                return Err(format!("SDK {version} did not resolve to a download URL"));
-            };
-            let archive_path = download_sdk(&download_url, version)?;
-            let sdk_root = extract_sdk_archive(&archive_path, version, refresh)?;
-            Ok(SdkResolution {
-                archive_path: Some(archive_path.display().to_string()),
-                sdk_root: Some(sdk_root.display().to_string()),
-                status: "ready".to_string(),
-                ..resolution
-            })
-        }
+        SdkResolutionSource::OfficialDownload => prepare_official_sdk(version, None),
         SdkResolutionSource::Cache => Ok(resolution),
     }
+}
+
+fn prepare_official_sdk(
+    version: &str,
+    previous_error: Option<String>,
+) -> Result<SdkResolution, String> {
+    let Some(download_url) = find_official_cpp_sdk_url(version) else {
+        return Err(previous_error
+            .unwrap_or_else(|| format!("SDK {version} did not resolve to a download URL")));
+    };
+
+    let archive_path = download_sdk(&download_url, version)?;
+    let sdk_root = extract_sdk_archive(&archive_path, version, true).map_err(|error| {
+        previous_error
+            .map(|previous| format!("{previous}; official SDK fallback failed: {error}"))
+            .unwrap_or(error)
+    })?;
+
+    Ok(SdkResolution {
+        version: version.to_string(),
+        source: SdkResolutionSource::OfficialDownload,
+        sdk_root: Some(sdk_root.display().to_string()),
+        archive_path: Some(archive_path.display().to_string()),
+        download_url: Some(download_url),
+        status: "ready".to_string(),
+    })
 }
 
 pub fn is_cmake_sdk_root(path: &Path) -> bool {
@@ -166,6 +175,14 @@ pub fn is_cmake_sdk_root(path: &Path) -> bool {
         && path.join("cmake").is_dir()
         && path.join("frameworks").is_dir()
         && path.join("plugins").is_dir()
+}
+
+pub fn is_legacy_sdk_root(path: &Path) -> bool {
+    path.join("frameworks").is_dir()
+        && path.join("plugins").is_dir()
+        && path.join("tools").join("projecttool").is_dir()
+        && (path.join("generate_solution_osx.command").is_file()
+            || path.join("generate_solution_win.bat").is_file())
 }
 
 pub fn read_configure_presets(sdk_root: &Path) -> Result<Vec<String>, String> {
@@ -395,11 +412,11 @@ fn parse_c4d_version_id(name: &str) -> String {
 }
 
 fn resolve_sdk_version(version: &str, refresh: bool) -> SdkResolution {
-    let sdk_root = sdk_cache_root(version);
-    if sdk_root.is_dir() && !refresh && is_cmake_sdk_root(&sdk_root) {
+    let configured_root = configured_sdk_root();
+    if let Some(sdk_root) = find_configured_sdk_root(&configured_root, version) {
         return SdkResolution {
             version: version.to_string(),
-            source: SdkResolutionSource::Cache,
+            source: SdkResolutionSource::Config,
             sdk_root: Some(sdk_root.display().to_string()),
             archive_path: None,
             download_url: generated_download_url_if_known(version),
@@ -407,8 +424,7 @@ fn resolve_sdk_version(version: &str, refresh: bool) -> SdkResolution {
         };
     }
 
-    let archive_path = sdk_archive_path(version);
-    if archive_path.is_file() && !refresh {
+    if let Some(archive_path) = find_configured_sdk_archive(&configured_root, version) {
         return SdkResolution {
             version: version.to_string(),
             source: SdkResolutionSource::Config,
@@ -416,17 +432,6 @@ fn resolve_sdk_version(version: &str, refresh: bool) -> SdkResolution {
             archive_path: Some(archive_path.display().to_string()),
             download_url: generated_download_url_if_known(version),
             status: "configured archive".to_string(),
-        };
-    }
-
-    if let Some(url) = find_official_cpp_sdk_url(version) {
-        return SdkResolution {
-            version: version.to_string(),
-            source: SdkResolutionSource::OfficialDownload,
-            sdk_root: None,
-            archive_path: None,
-            download_url: Some(url),
-            status: "auto download".to_string(),
         };
     }
 
@@ -439,6 +444,29 @@ fn resolve_sdk_version(version: &str, refresh: bool) -> SdkResolution {
             archive_path: Some(installed_zip.display().to_string()),
             download_url: generated_download_url_if_known(version),
             status: "installed sdk.zip".to_string(),
+        };
+    }
+
+    let sdk_root = sdk_cache_root(version);
+    if sdk_root.is_dir() && !refresh && is_cmake_sdk_root(&sdk_root) {
+        return SdkResolution {
+            version: version.to_string(),
+            source: SdkResolutionSource::Cache,
+            sdk_root: Some(sdk_root.display().to_string()),
+            archive_path: None,
+            download_url: generated_download_url_if_known(version),
+            status: "cached root".to_string(),
+        };
+    }
+
+    if let Some(url) = find_official_cpp_sdk_url(version) {
+        return SdkResolution {
+            version: version.to_string(),
+            source: SdkResolutionSource::OfficialDownload,
+            sdk_root: None,
+            archive_path: None,
+            download_url: Some(url),
+            status: "auto download".to_string(),
         };
     }
 
@@ -474,6 +502,50 @@ fn remote_file_exists(url: &str) -> bool {
         .send()
         .map(|response| response.status().is_success())
         .unwrap_or(false)
+}
+
+fn find_configured_sdk_root(configured_root: &Path, version: &str) -> Option<PathBuf> {
+    if !configured_root.is_dir() {
+        return None;
+    }
+
+    if is_cmake_sdk_root(configured_root) || is_legacy_sdk_root(configured_root) {
+        return path_matches_sdk_version(configured_root, version)
+            .then(|| configured_root.to_path_buf());
+    }
+
+    WalkDir::new(configured_root)
+        .max_depth(5)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_dir())
+        .map(|entry| entry.path().to_path_buf())
+        .filter(|path| is_cmake_sdk_root(path) || is_legacy_sdk_root(path))
+        .find(|path| path_matches_sdk_version(path, version))
+}
+
+fn find_configured_sdk_archive(configured_root: &Path, version: &str) -> Option<PathBuf> {
+    if !configured_root.is_dir() {
+        return None;
+    }
+
+    let expected_archive = sdk_archive_name(version);
+    WalkDir::new(configured_root)
+        .max_depth(5)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .map(|entry| entry.path().to_path_buf())
+        .find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == expected_archive)
+                || path_matches_sdk_version(path, version)
+                    && path
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+        })
 }
 
 fn download_sdk(download_url: &str, version: &str) -> Result<PathBuf, String> {
@@ -516,6 +588,23 @@ fn extract_sdk_archive(
             .map_err(|error| format!("Failed to remove {}: {error}", target_root.display()))?;
     }
 
+    if target_root.exists() {
+        if is_cmake_sdk_root(&target_root) || is_legacy_sdk_root(&target_root) {
+            return Ok(target_root);
+        }
+
+        if let Some(nested) = find_nested_sdk_root(&target_root) {
+            return Ok(nested);
+        }
+
+        std::fs::remove_dir_all(&target_root).map_err(|error| {
+            format!(
+                "Failed to remove incomplete SDK cache {}: {error}",
+                target_root.display()
+            )
+        })?;
+    }
+
     if !target_root.exists() {
         std::fs::create_dir_all(&target_root)
             .map_err(|error| format!("Failed to create {}: {error}", target_root.display()))?;
@@ -528,7 +617,7 @@ fn extract_sdk_archive(
             .map_err(|error| format!("Failed to extract SDK zip: {error}"))?;
     }
 
-    if is_cmake_sdk_root(&target_root) {
+    if is_cmake_sdk_root(&target_root) || is_legacy_sdk_root(&target_root) {
         return Ok(target_root);
     }
 
@@ -543,13 +632,13 @@ fn extract_sdk_archive(
 }
 
 pub fn sdk_cache_root(version: &str) -> PathBuf {
-    configured_sdk_root()
+    configured_sdk_collection_root()
         .join(version_folder(version))
         .join("sdk")
 }
 
 fn sdk_archive_path(version: &str) -> PathBuf {
-    configured_sdk_root()
+    configured_sdk_collection_root()
         .join(version_folder(version))
         .join("downloads")
         .join(sdk_archive_name(version))
@@ -561,7 +650,7 @@ fn find_nested_sdk_root(root: &Path) -> Option<PathBuf> {
         .into_iter()
         .filter_map(Result::ok)
         .map(|entry| entry.path().to_path_buf())
-        .find(|path| is_cmake_sdk_root(path))
+        .find(|path| is_cmake_sdk_root(path) || is_legacy_sdk_root(path))
 }
 
 fn sdk_source_config_path() -> PathBuf {
@@ -587,7 +676,25 @@ fn parse_sdk_source_config(text: &str) -> Result<SdkSourceConfig, String> {
         return serde_json::from_value::<SdkSourceConfig>(value)
             .map_err(|error| format!("Failed to parse SDK root config: {error}"));
     }
+    if let Some(root) = legacy_sdk_root(&value) {
+        return Ok(SdkSourceConfig {
+            sdk_root: Some(root),
+        });
+    }
     Ok(default_sdk_source_config())
+}
+
+fn legacy_sdk_root(value: &Value) -> Option<String> {
+    value.as_object().and_then(|object| {
+        object.values().find_map(|entry| {
+            entry.as_object().and_then(|item| {
+                item.get("sdk_root")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .filter(|text| !text.trim().is_empty())
+            })
+        })
+    })
 }
 
 fn default_sdk_source_config() -> SdkSourceConfig {
@@ -602,6 +709,15 @@ fn configured_sdk_root() -> PathBuf {
         .and_then(|config| config.sdk_root)
         .map(PathBuf::from)
         .unwrap_or_else(default_sdk_root)
+}
+
+fn configured_sdk_collection_root() -> PathBuf {
+    let root = configured_sdk_root();
+    if is_cmake_sdk_root(&root) || is_legacy_sdk_root(&root) {
+        return root.parent().map(Path::to_path_buf).unwrap_or(root);
+    }
+
+    root
 }
 
 fn default_sdk_root() -> PathBuf {
@@ -623,24 +739,35 @@ fn sdk_version_option(version: &str, config: &SdkSourceConfig) -> SdkVersionOpti
         .clone()
         .map(PathBuf::from)
         .unwrap_or_else(default_sdk_root);
-    let version_root = root.join(version_folder(version));
-    let sdk_root = version_root.join("sdk");
-    let archive_path = version_root
-        .join("downloads")
-        .join(sdk_archive_name(version));
     let download_url = generated_download_url_if_known(version);
     let configured = config.sdk_root.is_some();
-    let (sdk_root, sdk_zip, status) = if is_cmake_sdk_root(&sdk_root) {
+    let resolved_sdk_root = find_configured_sdk_root(&root, version);
+    let resolved_archive = find_configured_sdk_archive(&root, version);
+    let installed_zip = installed_sdk_zip_path(version);
+    let cached_root = sdk_cache_root(version);
+    let (sdk_root, sdk_zip, status) = if let Some(sdk_root) = resolved_sdk_root {
         (
             Some(sdk_root.display().to_string()),
             None,
             "configured root".to_string(),
         )
-    } else if archive_path.is_file() {
+    } else if let Some(archive_path) = resolved_archive {
         (
             None,
             Some(archive_path.display().to_string()),
             "configured archive".to_string(),
+        )
+    } else if installed_zip.is_file() {
+        (
+            None,
+            Some(installed_zip.display().to_string()),
+            "installed sdk.zip".to_string(),
+        )
+    } else if is_cmake_sdk_root(&cached_root) || is_legacy_sdk_root(&cached_root) {
+        (
+            Some(cached_root.display().to_string()),
+            None,
+            "cached root".to_string(),
         )
     } else {
         (
@@ -738,6 +865,36 @@ fn normalize_path_key(path: &str) -> String {
     path.replace('\\', "/").to_lowercase()
 }
 
+fn path_matches_sdk_version(path: &Path, version: &str) -> bool {
+    let path_text = normalize_path_key(&path.display().to_string());
+    sdk_version_match_tokens(version)
+        .iter()
+        .any(|token| path_text.contains(token))
+}
+
+fn sdk_version_match_tokens(version: &str) -> Vec<String> {
+    let major = version.split('.').next().unwrap_or(version);
+    let mut tokens = vec![
+        version.to_lowercase(),
+        version.replace('.', "_").to_lowercase(),
+        version.replace('.', "-").to_lowercase(),
+    ];
+
+    if version == major {
+        tokens.push(format!("{major}_0_0").to_lowercase());
+        tokens.push(format!("{major}-0-0").to_lowercase());
+        tokens.push(format!("cinema_4d_cpp_sdk_{major}").to_lowercase());
+        tokens.push(format!("cinema 4d {major}").to_lowercase());
+    } else {
+        tokens.push(format!("cinema_4d_cpp_sdk_{}", version.replace('.', "_")).to_lowercase());
+        tokens.push(format!("cinema 4d {major}").to_lowercase());
+    }
+
+    tokens.sort();
+    tokens.dedup();
+    tokens
+}
+
 fn version_folder(version: &str) -> String {
     version.replace('.', "_")
 }
@@ -769,4 +926,117 @@ fn version_sort_key(version: &str) -> u32 {
         .and_then(|item| item.parse::<u32>().ok())
         .unwrap_or_default();
     major * 100 + minor
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{
+        find_configured_sdk_archive, find_configured_sdk_root, path_matches_sdk_version,
+        sdk_version_match_tokens,
+    };
+
+    #[test]
+    fn version_tokens_match_minor_sdk_names() {
+        let tokens = sdk_version_match_tokens("2024.4");
+
+        assert!(tokens.iter().any(|token| token == "2024.4"));
+        assert!(tokens.iter().any(|token| token == "2024_4"));
+        assert!(tokens
+            .iter()
+            .any(|token| token == "cinema_4d_cpp_sdk_2024_4"));
+        assert!(path_matches_sdk_version(
+            Path::new("/sdk/Cinema_4D_CPP_SDK_2024_4_0"),
+            "2024.4"
+        ));
+    }
+
+    #[test]
+    fn configured_sdk_root_is_version_specific() {
+        let root = TempTree::new("c4d-sdk-root");
+        let sdk_2024 = root
+            .path()
+            .join("2024_4")
+            .join("Cinema_4D_CPP_SDK_2024_4_0");
+        let sdk_2026 = root
+            .path()
+            .join("2026_02")
+            .join("Cinema_4D_CPP_SDK_2026_2_0");
+        create_minimal_sdk_root(&sdk_2024);
+        create_minimal_sdk_root(&sdk_2026);
+
+        assert_eq!(
+            find_configured_sdk_root(root.path(), "2024.4").as_deref(),
+            Some(sdk_2024.as_path())
+        );
+        assert_eq!(
+            find_configured_sdk_root(root.path(), "2026").as_deref(),
+            Some(sdk_2026.as_path())
+        );
+        assert_eq!(find_configured_sdk_root(&sdk_2026, "2024.4"), None);
+    }
+
+    #[test]
+    fn configured_sdk_archive_finds_version_archive() {
+        let root = TempTree::new("c4d-sdk-archive");
+        let archive = root
+            .path()
+            .join("downloads")
+            .join("Cinema_4D_CPP_SDK_2024_4_0.zip");
+        std::fs::create_dir_all(archive.parent().expect("archive parent")).unwrap();
+        std::fs::write(&archive, []).unwrap();
+
+        assert_eq!(
+            find_configured_sdk_archive(root.path(), "2024.4").as_deref(),
+            Some(archive.as_path())
+        );
+    }
+
+    #[test]
+    fn available_versions_keep_known_sdk_range() {
+        let versions = super::available_sdk_versions()
+            .into_iter()
+            .map(|version| version.version)
+            .collect::<Vec<_>>();
+
+        assert!(versions.contains(&"2024.4".to_string()));
+        assert!(versions.contains(&"2025".to_string()));
+        assert!(versions.contains(&"2026".to_string()));
+    }
+
+    fn create_minimal_sdk_root(path: &Path) {
+        std::fs::create_dir_all(path.join("cmake")).unwrap();
+        std::fs::create_dir_all(path.join("frameworks")).unwrap();
+        std::fs::create_dir_all(path.join("plugins")).unwrap();
+        std::fs::write(path.join("CMakeLists.txt"), "").unwrap();
+        std::fs::write(path.join("CMakePresets.json"), "{}").unwrap();
+    }
+
+    struct TempTree {
+        path: std::path::PathBuf,
+    }
+
+    impl TempTree {
+        fn new(name: &str) -> Self {
+            let millis = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_millis();
+            let path = std::env::temp_dir().join(format!("{name}-{millis}"));
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempTree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
 }

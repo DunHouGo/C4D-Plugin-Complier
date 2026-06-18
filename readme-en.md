@@ -4,9 +4,9 @@ C4D Plugin Compiler is a Rust and Tauri 2 desktop tool for building and packagin
 
 ## Main Interface
 
-- Top left sidebar button: shows or hides the SDK Sources panel for SDK download and local path configuration.
-- Top right sidebar button: shows or hides the Output Preview panel for generated file tree previews.
+- Both sidebars are hidden by default at startup. Use the title bar buttons to show or hide the SDK Sources panel and Output Preview panel when needed.
 - Center workbench: edit plugin build parameters, inspect environment status, resolve SDKs, run builds, and review logs and artifacts.
+- After choosing Simplified Chinese in Preferences, the main workbench, SDK Sources, Output Preview, buttons, statuses, and primary help text switch immediately.
 
 ## SDK Sources Parameters
 
@@ -21,7 +21,7 @@ SDK resolution order is: extracted SDKs under `SDK Root\<version>\sdk`, download
 
 ## Build Parameters
 
-- Plugin Root: plugin source root, usually containing `project/`, `source/`, and optional `res/`. Supports directory picker and drag-and-drop.
+- Plugin Root: plugin source root, usually containing `project/`, `source/`, and optional `res/`. Supports directory picker and drag-and-drop. After selection, the last folder name is used to prefill empty `Module` and `Package` fields; manually entered values are kept.
 - Module: C4D SDK module name and CMake target name, such as `postwatermark`.
 - Package: release package name and output plugin folder name.
 - C4D Versions: version tags generated from the SDK Sources start version.
@@ -45,4 +45,6 @@ The right Output Preview panel derives a file tree from the current Package, C4D
 - This version supports Windows and macOS build workflows.
 - Windows builds require CMake, Visual Studio 2022, and matching SDKs. macOS builds require CMake, Xcode 16, Clang, Python 3.8, and matching SDKs.
 - Path fields can be typed manually, selected with the folder button, or filled by dropping a file or folder on the field.
+- If the selected Plugin Root is `.../MyPlugin` and `Module` plus `Package` are still empty, both fields are filled with `MyPlugin`.
+- Build logs and backend errors keep their original English diagnostics so they can be searched against SDK, CMake, or compiler references.
 - Cancel does not force-kill an already running CMake child process.

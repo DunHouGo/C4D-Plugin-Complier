@@ -53,9 +53,9 @@ pub fn current_build_platform() -> BuildPlatform {
 }
 
 pub fn local_data_root() -> Result<PathBuf, String> {
-    dirs::data_local_dir()
-        .map(|path| path.join("Boghma").join(APP_CACHE_FOLDER))
-        .ok_or_else(|| "Failed to resolve local app data directory".to_string())
+    dirs::home_dir()
+        .map(|path| path.join(".boghma").join(APP_CACHE_FOLDER))
+        .ok_or_else(|| "Failed to resolve home directory".to_string())
 }
 
 pub fn sanitize_path_name(value: &str) -> String {

@@ -4,9 +4,9 @@ C4D Plugin Compiler 是一个基于 Rust 和 Tauri 2 的 Cinema 4D C++ 插件编
 
 ## 主界面
 
-- 顶部左侧侧栏按钮：显示或隐藏 SDK Sources 面板，用于配置 SDK 下载和本地路径。
-- 顶部右侧侧栏按钮：显示或隐藏 Output Preview 面板，用于预览构建后将生成的文件树。
+- 启动时左右侧栏默认隐藏，标题栏两侧按钮可按需显示或隐藏 SDK Sources 面板与 Output Preview 面板。
 - 中间工作台：填写插件构建参数、查看环境状态、解析 SDK、执行构建、查看日志和产物。
+- 在偏好设置中选择简体中文后，主工作台、SDK Sources、Output Preview、按钮、状态和主要提示会立即切换为中文。
 
 ## SDK Sources 参数
 
@@ -21,7 +21,7 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 
 ## 构建参数
 
-- Plugin Root：插件源码根目录，通常包含 `project/`、`source/` 和可选的 `res/`。支持目录选择和拖拽。
+- Plugin Root：插件源码根目录，通常包含 `project/`、`source/` 和可选的 `res/`。支持目录选择和拖拽。选择后会自动根据路径最后一级目录名预填 `Module` 和 `Package`，如果这两个字段已经手动填写则不会覆盖。
 - Module：C4D SDK 模块名，也是 CMake 构建 target 名，例如 `postwatermark`。
 - Package：发布包名称，也是输出插件目录名称。
 - C4D Versions：由 SDK Sources 中的起始版本自动生成的版本标签。
@@ -45,4 +45,6 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 - 当前版本支持 Windows 和 macOS 构建流程。
 - Windows 构建仍需要本机安装 CMake、Visual Studio 2022 和对应 SDK；macOS 构建需要 CMake、Xcode 16、Clang 和 Python 3.8。
 - 路径输入既可以手动输入，也可以点击文件夹按钮选择，或将文件/目录拖拽到输入框区域。
+- 如果拖入或选择的 Plugin Root 是 `.../MyPlugin`，并且 `Module` 和 `Package` 还是空的，它们会自动填成 `MyPlugin`。
+- 构建日志和后端错误保留原始英文诊断信息，便于复制到 SDK 文档、CMake 或编译器错误搜索中排查。
 - 取消任务不会强制杀死已经启动的 CMake 子进程。

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FileArchive, FileCode2, Folder, FolderTree } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -19,10 +20,17 @@ interface TreeNode {
 }
 
 export function FileTreePreview() {
+  const { t } = useTranslation()
   const request = useCompilerStore(state => state.request)
   const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
   const extension = environment?.binary_extension ?? 'xdl64'
-  const tree = buildPreviewTree(request, extension)
+  const tree = buildPreviewTree(
+    request,
+    extension,
+    t('preview.defaults.package'),
+    t('preview.defaults.plugin'),
+    t('preview.notes.copiedResources')
+  )
 
   useEffect(() => {
     void commands.detectEnvironment().then(result => {
@@ -37,8 +45,8 @@ export function FileTreePreview() {
       <div className="border-b px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <FolderTree className="size-4" />
-          Output Preview
-          <HelpHint text="Preview of package folders, binaries, copied resources, and zip files generated from the current build settings." />
+          {t('preview.title')}
+          <HelpHint text={t('preview.help.title')} />
         </div>
         <div className="mt-1 flex flex-wrap gap-1.5">
           {request.versions.map(version => (
@@ -51,7 +59,9 @@ export function FileTreePreview() {
       <ScrollArea className="flex-1">
         <div className="space-y-3 p-4">
           <div className="rounded-md border bg-muted/20 p-3">
-            <div className="text-xs text-muted-foreground">Output Dir</div>
+            <div className="text-xs text-muted-foreground">
+              {t('preview.outputDir')}
+            </div>
             <div className="mt-1 break-all font-mono text-xs">
               {request.output_dir || `${request.plugin_root}\\dist`}
             </div>
@@ -94,14 +104,17 @@ function TreeNodeView({ node, depth }: { node: TreeNode; depth: number }) {
 
 function buildPreviewTree(
   request: BuildRequest,
-  binaryExtension: string
+  binaryExtension: string,
+  defaultPackageName: string,
+  defaultPluginName: string,
+  copiedResourcesNote: string
 ): TreeNode {
   const outputName = lastPathPart(request.output_dir || 'dist')
   const children: TreeNode[] = []
 
   if (request.package_mode === 'Merged' || request.package_mode === 'Both') {
     children.push({
-      name: request.package_name || 'Package',
+      name: request.package_name || defaultPackageName,
       kind: 'folder',
       children: [
         {
@@ -109,7 +122,7 @@ function buildPreviewTree(
           kind: 'folder',
           children: [
             {
-              name: 'copied from plugin root if present',
+              name: copiedResourcesNote,
               kind: 'file',
               fileType: 'note',
             },
@@ -117,7 +130,7 @@ function buildPreviewTree(
         },
         ...request.versions.flatMap(version =>
           buildConfigurations(request.configuration).map(configuration => ({
-            name: `${request.package_name || 'Plugin'} ${version} ${configuration}.${binaryExtension}`,
+            name: `${request.package_name || defaultPluginName} ${version} ${configuration}.${binaryExtension}`,
             kind: 'file' as const,
             fileType: 'binary' as const,
           }))
@@ -127,7 +140,7 @@ function buildPreviewTree(
 
     if (request.zip_enabled) {
       children.push({
-        name: `${request.package_name || 'Package'}.zip`,
+        name: `${request.package_name || defaultPackageName}.zip`,
         kind: 'file',
         fileType: 'zip',
       })
@@ -140,7 +153,7 @@ function buildPreviewTree(
   ) {
     for (const version of request.versions) {
       for (const configuration of buildConfigurations(request.configuration)) {
-        const folderName = `${request.package_name || 'Package'}_${version}_${configuration}`
+        const folderName = `${request.package_name || defaultPackageName}_${version}_${configuration}`
         children.push({
           name: folderName,
           kind: 'folder',
@@ -150,14 +163,14 @@ function buildPreviewTree(
               kind: 'folder',
               children: [
                 {
-                  name: 'copied from plugin root if present',
+                  name: copiedResourcesNote,
                   kind: 'file',
                   fileType: 'note',
                 },
               ],
             },
             {
-              name: `${request.package_name || 'Plugin'} ${version}.${binaryExtension}`,
+              name: `${request.package_name || defaultPluginName} ${version}.${binaryExtension}`,
               kind: 'file',
               fileType: 'binary',
             },

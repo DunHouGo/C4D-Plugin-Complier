@@ -7,7 +7,9 @@ use walkdir::WalkDir;
 
 use crate::compiler::env::detect_cmake_path;
 use crate::compiler::package::package_outputs;
-use crate::compiler::sdk::{prepare_sdk, read_configure_presets};
+use crate::compiler::sdk::{
+    is_cmake_sdk_root, is_legacy_sdk_root, prepare_sdk, read_configure_presets,
+};
 use crate::compiler::{
     current_build_platform, local_data_root, parse_version_list, require_dir, sanitize_path_name,
 };
@@ -31,7 +33,6 @@ pub fn execute_build(
         .ok_or_else(|| "No binary extension is configured for this platform".to_string())?;
 
     validate_request(request)?;
-    let cmake = detect_cmake_path().ok_or_else(|| "CMake was not found".to_string())?;
     let versions: Vec<String> = request
         .versions
         .iter()
@@ -49,49 +50,91 @@ pub fn execute_build(
                 .clone()
                 .ok_or_else(|| format!("SDK {version} did not resolve to a root path"))?,
         );
-        let presets = read_configure_presets(&sdk_root)?;
-        if !presets.iter().any(|name| name == preset) {
-            return Err(format!(
-                "SDK {version} does not provide preset {preset}. Available presets: {}",
-                presets.join(", ")
-            ));
-        }
 
-        let modules_dir = prepare_module_alias(request)?;
-        let build_dir = build_dir_for(&sdk_root, version, preset)?;
-        configure_sdk(
-            &cmake,
-            &sdk_root,
-            &build_dir,
-            &modules_dir,
-            preset,
-            log,
-            job_id,
-        )?;
+        if is_cmake_sdk_root(&sdk_root) {
+            let cmake = detect_cmake_path().ok_or_else(|| "CMake was not found".to_string())?;
+            let presets = read_configure_presets(&sdk_root)?;
+            if !presets.iter().any(|name| name == preset) {
+                return Err(format!(
+                    "SDK {version} does not provide preset {preset}. Available presets: {}",
+                    presets.join(", ")
+                ));
+            }
 
-        for configuration in request.configuration.cmake_configs() {
-            current += 1;
-            progress(BuildProgressEvent {
-                job_id: job_id.to_string(),
-                current,
-                total,
-                label: format!("Building C4D {version} {configuration}"),
-            });
-            build_target(
+            let modules_dir = prepare_module_alias(request)?;
+            let build_dir = build_dir_for(&sdk_root, version, preset)?;
+            if request.clean_output && build_dir.exists() {
+                log_info(
+                    log,
+                    job_id,
+                    &format!("Cleaning SDK build directory: {}", build_dir.display()),
+                );
+                std::fs::remove_dir_all(&build_dir)
+                    .map_err(|error| format!("Failed to clean {}: {error}", build_dir.display()))?;
+            }
+            configure_sdk(
                 &cmake,
+                &sdk_root,
                 &build_dir,
-                configuration,
-                &request.module_name,
+                &modules_dir,
+                preset,
                 log,
                 job_id,
             )?;
-            let binary = find_plugin_binary(
-                &build_dir,
-                configuration,
-                &request.module_name,
-                binary_extension,
-            )?;
-            built_binaries.push((version.clone(), configuration.to_string(), binary));
+
+            for configuration in request.configuration.cmake_configs() {
+                current += 1;
+                progress(BuildProgressEvent {
+                    job_id: job_id.to_string(),
+                    current,
+                    total,
+                    label: format!("Building C4D {version} {configuration}"),
+                });
+                build_target(
+                    &cmake,
+                    &build_dir,
+                    configuration,
+                    &request.module_name,
+                    log,
+                    job_id,
+                )?;
+                let binary = find_plugin_binary(
+                    &build_dir,
+                    configuration,
+                    &request.module_name,
+                    binary_extension,
+                )?;
+                built_binaries.push((version.clone(), configuration.to_string(), binary));
+            }
+        } else if is_legacy_sdk_root(&sdk_root) {
+            prepare_legacy_module_workspace(&sdk_root, request, log, job_id)?;
+            generate_legacy_projects(&sdk_root, log, job_id)?;
+
+            for configuration in request.configuration.cmake_configs() {
+                current += 1;
+                progress(BuildProgressEvent {
+                    job_id: job_id.to_string(),
+                    current,
+                    total,
+                    label: format!("Building C4D {version} {configuration}"),
+                });
+                build_legacy_target_with_retry(
+                    &sdk_root,
+                    configuration,
+                    &request.module_name,
+                    log,
+                    job_id,
+                )?;
+                let binary = find_legacy_plugin_binary(
+                    &sdk_root,
+                    configuration,
+                    &request.module_name,
+                    binary_extension,
+                )?;
+                built_binaries.push((version.clone(), configuration.to_string(), binary));
+            }
+        } else {
+            return Err(format!("Unsupported SDK layout: {}", sdk_root.display()));
         }
     }
 
@@ -118,7 +161,7 @@ fn validate_request(request: &BuildRequest) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
-    let modules_root = local_data_root()?.join("modules").join(format!(
+    let modules_root = local_data_root()?.join("plugin-links").join(format!(
         "{}_modules",
         sanitize_path_name(&request.module_name)
     ));
@@ -155,7 +198,7 @@ fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
 
 #[cfg(target_os = "macos")]
 fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
-    let modules_root = local_data_root()?.join("modules").join(format!(
+    let modules_root = local_data_root()?.join("plugin-links").join(format!(
         "{}_modules",
         sanitize_path_name(&request.module_name)
     ));
@@ -270,6 +313,327 @@ fn build_target(
         target.to_string(),
     ];
     run_command(cmake, &args, build_dir, log, job_id)
+}
+
+fn prepare_legacy_module_workspace(
+    sdk_root: &Path,
+    request: &BuildRequest,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    let module_root = sdk_root.join("plugins").join(&request.module_name);
+    if module_root.exists() {
+        remove_link_or_dir_cross_platform(&module_root)?;
+    }
+    copy_dir_recursive(Path::new(&request.plugin_root), &module_root)?;
+    ensure_legacy_solution_includes_module(sdk_root, &request.module_name)?;
+    log_info(
+        log,
+        job_id,
+        &format!(
+            "Prepared legacy SDK module workspace: {}",
+            module_root.display()
+        ),
+    );
+    Ok(())
+}
+
+fn ensure_legacy_solution_includes_module(
+    sdk_root: &Path,
+    module_name: &str,
+) -> Result<(), String> {
+    let definition = sdk_root
+        .join("plugins")
+        .join("project")
+        .join("projectdefinition.txt");
+    let module_entry = format!("plugins/{module_name}");
+    let text = std::fs::read_to_string(&definition)
+        .map_err(|error| format!("Failed to read {}: {error}", definition.display()))?;
+    if text.contains(&module_entry) {
+        return Ok(());
+    }
+
+    let mut lines = text.lines().map(str::to_string).collect::<Vec<_>>();
+    if let Some(index) = lines
+        .iter()
+        .rposition(|line| line.trim_start().starts_with("plugins/"))
+    {
+        let previous = lines[index]
+            .trim_end()
+            .trim_end_matches('\\')
+            .trim_end_matches(';');
+        lines[index] = format!("{previous};\\");
+        lines.insert(index + 1, format!("\t{module_entry}"));
+    } else {
+        lines.push("Solution=\\".to_string());
+        lines.push(format!("\t{module_entry}"));
+    }
+
+    std::fs::write(&definition, format!("{}\n", lines.join("\n")))
+        .map_err(|error| format!("Failed to write {}: {error}", definition.display()))
+}
+
+fn generate_legacy_projects(
+    sdk_root: &Path,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let script = sdk_root.join("generate_solution_osx.command");
+        let args = Vec::<String>::new();
+        run_command(&script.display().to_string(), &args, sdk_root, log, job_id)
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let script = sdk_root.join("generate_solution_win.bat");
+        let args = Vec::<String>::new();
+        run_command(&script.display().to_string(), &args, sdk_root, log, job_id)
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = (sdk_root, log, job_id);
+        Err("Legacy SDK builds are currently supported on Windows and macOS".to_string())
+    }
+}
+
+fn build_legacy_target_with_retry(
+    sdk_root: &Path,
+    configuration: &str,
+    module_name: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    match build_legacy_target(sdk_root, configuration, module_name, log, job_id) {
+        Ok(()) => Ok(()),
+        Err(error) if is_missing_legacy_generated_file_error(&error) => {
+            log_warn(
+                log,
+                job_id,
+                "Legacy SDK generated files were created late; retrying the Xcode build once",
+            );
+            build_legacy_target(sdk_root, configuration, module_name, log, job_id)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn build_legacy_target(
+    sdk_root: &Path,
+    configuration: &str,
+    module_name: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let project = sdk_root
+            .join("plugins")
+            .join(module_name)
+            .join("project")
+            .join(format!("{module_name}.xcodeproj"));
+        if !project.is_dir() {
+            return Err(format!(
+                "Legacy Xcode project was not generated: {}",
+                project.display()
+            ));
+        }
+        let shim_dir = prepare_python_shim()?;
+        let args = vec![
+            "-project".to_string(),
+            project.display().to_string(),
+            "-scheme".to_string(),
+            module_name.to_string(),
+            "-configuration".to_string(),
+            configuration.to_string(),
+            "-destination".to_string(),
+            "generic/platform=macOS".to_string(),
+            "-jobs".to_string(),
+            "1".to_string(),
+            "WARNING_CFLAGS=-Wno-missing-template-arg-list-after-template-kw -Wno-error=overriding-deployment-version".to_string(),
+            "build".to_string(),
+        ];
+        run_command_with_path_prefix(
+            "xcodebuild",
+            &args,
+            project.parent().unwrap_or(sdk_root),
+            &shim_dir,
+            log,
+            job_id,
+        )
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = (sdk_root, configuration, module_name, log, job_id);
+        Err("Legacy Windows SDK build support is not implemented yet".to_string())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = (sdk_root, configuration, module_name, log, job_id);
+        Err("Legacy SDK builds are currently supported on Windows and macOS".to_string())
+    }
+}
+
+fn is_missing_legacy_generated_file_error(error: &str) -> bool {
+    error.contains("Build input file cannot be found")
+        && error.contains("generated/hxx")
+        && error.contains("register.cpp")
+}
+
+#[cfg(target_os = "macos")]
+fn prepare_python_shim() -> Result<PathBuf, String> {
+    let shim_dir = local_data_root()?.join("legacy-python-shim");
+    std::fs::create_dir_all(&shim_dir)
+        .map_err(|error| format!("Failed to create {}: {error}", shim_dir.display()))?;
+    let shim = shim_dir.join("python");
+    if shim.exists() {
+        std::fs::remove_file(&shim)
+            .map_err(|error| format!("Failed to remove {}: {error}", shim.display()))?;
+    }
+    let python3 = find_usable_python3()
+        .ok_or_else(|| "Python 3 was not found for legacy SDK build scripts".to_string())?;
+    std::os::unix::fs::symlink(&python3, &shim)
+        .map_err(|error| format!("Failed to create python shim: {error}"))?;
+    Ok(shim_dir)
+}
+
+#[cfg(target_os = "macos")]
+fn find_usable_python3() -> Option<PathBuf> {
+    std::env::var_os("PATH").and_then(|path| {
+        std::env::split_paths(&path)
+            .map(|dir| dir.join("python3"))
+            .find(|candidate| candidate.is_file() && candidate != Path::new("/usr/bin/python3"))
+    })
+}
+
+fn find_legacy_plugin_binary(
+    sdk_root: &Path,
+    configuration: &str,
+    module_name: &str,
+    binary_extension: &str,
+) -> Result<PathBuf, String> {
+    let expected_file_name = format!("{module_name}.{binary_extension}");
+    let candidates = [
+        sdk_root
+            .join("build")
+            .join(configuration)
+            .join(&expected_file_name),
+        sdk_root
+            .join("plugins")
+            .join(module_name)
+            .join(&expected_file_name),
+    ];
+    if let Some(path) = candidates.iter().find(|path| path.is_file()) {
+        return Ok(path.to_path_buf());
+    }
+
+    WalkDir::new(sdk_root.join("plugins").join(module_name))
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().to_path_buf())
+        .find(|path| {
+            path.file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|file_name| file_name == expected_file_name)
+        })
+        .ok_or_else(|| {
+            format!(
+                "Built binary {expected_file_name} was not found under {}",
+                sdk_root.display()
+            )
+        })
+}
+
+fn run_command_with_path_prefix(
+    program: &str,
+    args: &[String],
+    cwd: &Path,
+    path_prefix: &Path,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    log_info(
+        log,
+        job_id,
+        &format!("Running: {program} {}", args.join(" ")),
+    );
+    let path = std::env::var("PATH").unwrap_or_default();
+    let output = Command::new(program)
+        .args(args)
+        .current_dir(cwd)
+        .env("PATH", format!("{}:{path}", path_prefix.display()))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("Failed to run {program}: {error}"))?;
+
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        log_info(log, job_id, line);
+    }
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        log_warn(log, job_id, line);
+    }
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!(
+            "Command failed with status {}:\n{}",
+            output.status,
+            tail_lines(&format!("{stdout}\n{stderr}"), 80)
+        ))
+    }
+}
+
+fn tail_lines(text: &str, count: usize) -> String {
+    let lines = text.lines().collect::<Vec<_>>();
+    let start = lines.len().saturating_sub(count);
+    lines[start..].join("\n")
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
+    for entry in WalkDir::new(source).into_iter().filter_map(Result::ok) {
+        let relative = entry
+            .path()
+            .strip_prefix(source)
+            .map_err(|error| error.to_string())?;
+        let destination = target.join(relative);
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&destination)
+                .map_err(|error| format!("Failed to create {}: {error}", destination.display()))?;
+        } else {
+            if let Some(parent) = destination.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
+            }
+            std::fs::copy(entry.path(), &destination).map_err(|error| {
+                format!(
+                    "Failed to copy {} to {}: {error}",
+                    entry.path().display(),
+                    destination.display()
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn remove_link_or_dir_cross_platform(path: &Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("Failed to inspect {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() || metadata.is_file() {
+        std::fs::remove_file(path)
+            .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
+    } else {
+        std::fs::remove_dir_all(path)
+            .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
+    }
 }
 
 fn run_command(

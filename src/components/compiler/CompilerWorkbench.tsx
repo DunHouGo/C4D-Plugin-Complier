@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
+import { useTranslation } from 'react-i18next'
 import {
   Archive,
   Box,
@@ -44,8 +45,10 @@ import {
 type BuildState = 'idle' | 'running' | 'success' | 'failed'
 
 export function CompilerWorkbench() {
+  const { t } = useTranslation()
   const request = useCompilerStore(state => state.request)
   const updateRequest = useCompilerStore(state => state.updateRequest)
+  const updatePluginRoot = useCompilerStore(state => state.updatePluginRoot)
   const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
   const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
   const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
@@ -211,28 +214,28 @@ export function CompilerWorkbench() {
         <div className="border-b px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Hammer className="size-4" />
-            C4D Plugin Compiler
+            {t('compiler.title')}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
-            Rust backend · Tauri 2 · CMake SDK workflow
+            {t('compiler.subtitle')}
           </div>
         </div>
         <ScrollArea className="flex-1">
           <div className="space-y-4 p-4">
             <Field
-              label="Plugin Root"
-              help="Choose the Cinema 4D plugin module folder that contains project, source, and optional res folders."
+              label={t('compiler.fields.pluginRoot')}
+              help={t('compiler.help.pluginRoot')}
             >
               <PathPicker
                 value={request.plugin_root}
-                title="Choose plugin root"
-                onChange={value => updateRequest({ plugin_root: value })}
+                title={t('compiler.picker.pluginRoot')}
+                onChange={value => updatePluginRoot(value)}
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field
-                label="Module"
-                help="CMake target/module folder name under the SDK plugins path."
+                label={t('compiler.fields.module')}
+                help={t('compiler.help.module')}
               >
                 <Input
                   value={request.module_name}
@@ -242,8 +245,8 @@ export function CompilerWorkbench() {
                 />
               </Field>
               <Field
-                label="Package"
-                help="Display/package folder name used when generating output artifacts."
+                label={t('compiler.fields.package')}
+                help={t('compiler.help.package')}
               >
                 <Input
                   value={request.package_name}
@@ -254,8 +257,8 @@ export function CompilerWorkbench() {
               </Field>
             </div>
             <Field
-              label="C4D Versions"
-              help="Build versions come from configured SDKs. Pick a start version and all later versions are selected automatically."
+              label={t('compiler.fields.c4dVersions')}
+              help={t('compiler.help.c4dVersions')}
             >
               <Select
                 value={sdkStartVersion}
@@ -282,8 +285,8 @@ export function CompilerWorkbench() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field
-                label="Configuration"
-                help="Choose Debug, Release, or both CMake build configurations."
+                label={t('compiler.fields.configuration')}
+                help={t('compiler.help.configuration')}
               >
                 <Select
                   value={request.configuration}
@@ -297,15 +300,21 @@ export function CompilerWorkbench() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Debug">Debug</SelectItem>
-                    <SelectItem value="Release">Release</SelectItem>
-                    <SelectItem value="Both">Both</SelectItem>
+                    <SelectItem value="Debug">
+                      {t('compiler.configuration.debug')}
+                    </SelectItem>
+                    <SelectItem value="Release">
+                      {t('compiler.configuration.release')}
+                    </SelectItem>
+                    <SelectItem value="Both">
+                      {t('compiler.configuration.both')}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
               <Field
-                label="Package Mode"
-                help="Merged creates one package with all versions. Per Version creates a folder per version/configuration. Both creates both layouts."
+                label={t('compiler.fields.packageMode')}
+                help={t('compiler.help.packageMode')}
               >
                 <Select
                   value={request.package_mode}
@@ -317,43 +326,49 @@ export function CompilerWorkbench() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Merged">Merged</SelectItem>
-                    <SelectItem value="PerVersion">Per Version</SelectItem>
-                    <SelectItem value="Both">Both</SelectItem>
+                    <SelectItem value="Merged">
+                      {t('compiler.packageMode.merged')}
+                    </SelectItem>
+                    <SelectItem value="PerVersion">
+                      {t('compiler.packageMode.perVersion')}
+                    </SelectItem>
+                    <SelectItem value="Both">
+                      {t('compiler.packageMode.both')}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
             </div>
             <Field
-              label="Output Dir"
-              help="Choose where generated package folders and zip archives are written. Empty uses Plugin Root\\dist."
+              label={t('compiler.fields.outputDir')}
+              help={t('compiler.help.outputDir')}
             >
               <PathPicker
                 value={request.output_dir ?? ''}
-                placeholder="Plugin root\\dist"
-                title="Choose output directory"
+                placeholder={t('compiler.placeholder.outputDir')}
+                title={t('compiler.picker.outputDir')}
                 onChange={value => updateRequest({ output_dir: value || null })}
               />
             </Field>
             <div className="grid grid-cols-3 gap-2">
               <Toggle
                 checked={request.zip_enabled}
-                label="Zip"
-                help="Create zip archives beside generated package folders."
+                label={t('compiler.toggles.zip')}
+                help={t('compiler.help.zip')}
                 onCheckedChange={value => updateRequest({ zip_enabled: value })}
               />
               <Toggle
                 checked={request.clean_output}
-                label="Clean"
-                help="Remove existing output folders before packaging."
+                label={t('compiler.toggles.clean')}
+                help={t('compiler.help.clean')}
                 onCheckedChange={value =>
                   updateRequest({ clean_output: value })
                 }
               />
               <Toggle
                 checked={request.refresh_sdk_cache}
-                label="Refresh SDK"
-                help="Re-extract cached SDK archives before the next build."
+                label={t('compiler.toggles.refreshSdk')}
+                help={t('compiler.help.refreshSdk')}
                 onCheckedChange={value =>
                   updateRequest({ refresh_sdk_cache: value })
                 }
@@ -366,13 +381,13 @@ export function CompilerWorkbench() {
                 onClick={() => void startBuild()}
               >
                 <Play className="size-4" />
-                Build
-                <HelpHint text="Resolve SDKs, configure CMake, build the selected module, then package generated binaries." />
+                {t('compiler.actions.build')}
+                <HelpHint text={t('compiler.help.build')} />
               </Button>
               <Button
                 variant="outline"
                 size="icon"
-                title="Resolve SDKs"
+                title={t('compiler.actions.resolveSdks')}
                 onClick={() => void resolveSdks()}
               >
                 <Box className="size-4" />
@@ -380,7 +395,7 @@ export function CompilerWorkbench() {
               <Button
                 variant="outline"
                 size="icon"
-                title="Refresh environment"
+                title={t('compiler.actions.refreshEnvironment')}
                 onClick={() => {
                   void refreshEnvironment()
                   void refreshSdkVersions()
@@ -391,7 +406,7 @@ export function CompilerWorkbench() {
               <Button
                 variant="outline"
                 size="icon"
-                title="Cancel"
+                title={t('compiler.actions.cancel')}
                 disabled={state !== 'running'}
                 onClick={() => void cancelBuild()}
               >
@@ -404,7 +419,7 @@ export function CompilerWorkbench() {
 
       <main className="flex min-w-0 flex-col overflow-hidden">
         <div className="grid grid-cols-3 gap-3 border-b p-4">
-          <StatusPanel title="Environment">
+          <StatusPanel title={t('compiler.panels.environment')}>
             <ToolLine label="CMake" tool={environment?.cmake} />
             {compilerPlatform === 'Macos' ? (
               <>
@@ -432,10 +447,10 @@ export function CompilerWorkbench() {
               }
             />
           </StatusPanel>
-          <StatusPanel title="SDK Matrix">
+          <StatusPanel title={t('compiler.panels.sdkMatrix')}>
             {sdkResolutions.length === 0 ? (
               <div className="text-xs text-muted-foreground">
-                Resolve SDKs to preview sources.
+                {t('compiler.empty.sdkResolutions')}
               </div>
             ) : (
               sdkResolutions.map(item => (
@@ -446,7 +461,7 @@ export function CompilerWorkbench() {
               ))
             )}
           </StatusPanel>
-          <StatusPanel title="Progress">
+          <StatusPanel title={t('compiler.panels.progress')}>
             <div className="flex items-center gap-2">
               {state === 'success' ? (
                 <CheckCircle2 className="size-4 text-green-600" />
@@ -455,12 +470,12 @@ export function CompilerWorkbench() {
               ) : (
                 <Hammer className="size-4 text-muted-foreground" />
               )}
-              <span className="text-sm capitalize">{state}</span>
+              <span className="text-sm">{t(`compiler.state.${state}`)}</span>
             </div>
             <div className="text-xs text-muted-foreground">
               {progress
                 ? `${progress.current}/${progress.total} ${progress.label}`
-                : 'No active build'}
+                : t('compiler.empty.noActiveBuild')}
             </div>
           </StatusPanel>
         </div>
@@ -468,12 +483,14 @@ export function CompilerWorkbench() {
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_320px] overflow-hidden">
           <section className="flex min-w-0 flex-col">
             <div className="flex h-10 items-center gap-2 border-b px-4 text-sm font-medium">
-              Build Log
+              {t('compiler.panels.buildLog')}
             </div>
             <ScrollArea className="flex-1">
               <div className="space-y-1 p-4 font-mono text-xs">
                 {logs.length === 0 ? (
-                  <div className="text-muted-foreground">No logs yet.</div>
+                  <div className="text-muted-foreground">
+                    {t('compiler.empty.noLogs')}
+                  </div>
                 ) : (
                   logs.map((item, index) => (
                     <div
@@ -498,13 +515,13 @@ export function CompilerWorkbench() {
           <aside className="flex min-w-0 flex-col border-l">
             <div className="flex h-10 items-center gap-2 border-b px-4 text-sm font-medium">
               <Archive className="size-4" />
-              Artifacts
+              {t('compiler.panels.artifacts')}
             </div>
             <ScrollArea className="flex-1">
               <div className="space-y-2 p-3">
                 {artifacts.length === 0 ? (
                   <div className="text-xs text-muted-foreground">
-                    Packages appear here after a build.
+                    {t('compiler.empty.artifacts')}
                   </div>
                 ) : (
                   artifacts.map(item => (
@@ -525,8 +542,8 @@ export function CompilerWorkbench() {
                         }
                       >
                         <FolderOpen className="size-3.5" />
-                        Open
-                        <HelpHint text="Open this generated artifact in the system file manager." />
+                        {t('compiler.actions.open')}
+                        <HelpHint text={t('compiler.help.openArtifact')} />
                       </Button>
                     </div>
                   ))

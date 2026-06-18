@@ -23,6 +23,7 @@ interface CompilerState {
   sdkStartVersion: string
   setRequest: (request: BuildRequest) => void
   updateRequest: (patch: Partial<BuildRequest>) => void
+  updatePluginRoot: (pluginRoot: string) => void
   setSdkStartVersion: (version: string, availableVersions: string[]) => void
 }
 
@@ -39,6 +40,23 @@ export const useCompilerStore = create<CompilerState>()(
           state => ({ request: { ...state.request, ...patch } }),
           undefined,
           'updateRequest'
+        ),
+
+      updatePluginRoot: pluginRoot =>
+        set(
+          state => {
+            const detectedName = detectPluginName(pluginRoot)
+            return {
+              request: {
+                ...state.request,
+                plugin_root: pluginRoot,
+                module_name: state.request.module_name || detectedName,
+                package_name: state.request.package_name || detectedName,
+              },
+            }
+          },
+          undefined,
+          'updatePluginRoot'
         ),
 
       setSdkStartVersion: (version, availableVersions) =>
@@ -67,3 +85,12 @@ export const useCompilerStore = create<CompilerState>()(
     }
   )
 )
+
+function detectPluginName(pluginRoot: string): string {
+  const normalized = pluginRoot.trim().replace(/[/\\]+$/, '')
+  if (!normalized) {
+    return ''
+  }
+
+  return normalized.split(/[/\\]/).pop() ?? ''
+}

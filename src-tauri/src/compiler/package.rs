@@ -203,7 +203,14 @@ pub fn remove_path(path: &Path) -> Result<(), String> {
 }
 
 fn create_zip_archive(package_dir: &Path) -> Result<PathBuf, String> {
-    let zip_path = package_dir.with_extension("zip");
+    let zip_name = format!(
+        "{}.zip",
+        package_dir
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("Invalid package directory: {}", package_dir.display()))?
+    );
+    let zip_path = package_dir.with_file_name(zip_name);
     if zip_path.exists() {
         remove_path(&zip_path)?;
     }

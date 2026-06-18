@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Download, FolderCog, RefreshCw, Search, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -9,7 +10,10 @@ import {
   type InstalledC4dVersion,
   type SdkVersionOption,
 } from '@/lib/tauri-bindings'
-import { DEFAULT_SDK_START_VERSION, useCompilerStore } from '@/store/compiler-store'
+import {
+  DEFAULT_SDK_START_VERSION,
+  useCompilerStore,
+} from '@/store/compiler-store'
 import { cn } from '@/lib/utils'
 import { HelpHint } from './HelpHint'
 import { PathPicker } from './PathPicker'
@@ -48,6 +52,7 @@ const FALLBACK_SDK_VERSIONS: SdkVersionOption[] = [
 ]
 
 export function SdkConfigPanel() {
+  const { t } = useTranslation()
   const [versions, setVersions] = useState<SdkVersionOption[]>([])
   const [installedVersions, setInstalledVersions] = useState<
     InstalledC4dVersion[]
@@ -89,9 +94,13 @@ export function SdkConfigPanel() {
           : FALLBACK_SDK_VERSIONS
       setVersions(nextVersions)
       if (!nextVersions.some(item => item.version === selectedVersion)) {
-        const nextVersion = nextVersions[0]?.version ?? DEFAULT_SDK_START_VERSION
+        const nextVersion =
+          nextVersions[0]?.version ?? DEFAULT_SDK_START_VERSION
         setSelectedVersion(nextVersion)
-        setSdkStartVersion(nextVersion, nextVersions.map(item => item.version))
+        setSdkStartVersion(
+          nextVersion,
+          nextVersions.map(item => item.version)
+        )
       }
       if (sourceResult.status === 'ok') {
         setMessage(null)
@@ -114,7 +123,7 @@ export function SdkConfigPanel() {
     if (result.status === 'ok') {
       setSdkRoot(result.data.sdk_root ?? '')
       await loadSdkConfig()
-      setMessage('Saved SDK root')
+      setMessage(t('sdk.savedRoot'))
     } else {
       setMessage(result.error)
     }
@@ -137,11 +146,16 @@ export function SdkConfigPanel() {
           : FALLBACK_SDK_VERSIONS
       const nextVersion = nextVersions[0]?.version ?? DEFAULT_SDK_START_VERSION
       setSelectedVersion(nextVersion)
-      setSdkStartVersion(nextVersion, nextVersions.map(item => item.version))
+      setSdkStartVersion(
+        nextVersion,
+        nextVersions.map(item => item.version)
+      )
       setMessage(
         result.data.installed_versions.length > 0
-          ? `Detected ${result.data.installed_versions.length} Cinema 4D install(s)`
-          : 'No local Cinema 4D install detected; SDK URLs are still ready'
+          ? t('sdk.detectedInstall', {
+              count: result.data.installed_versions.length,
+            })
+          : t('sdk.noInstall')
       )
     } else {
       setMessage(result.error)
@@ -154,11 +168,11 @@ export function SdkConfigPanel() {
       <div className="border-b px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <FolderCog className="size-4" />
-          SDK Sources
-          <HelpHint text="Configure one SDK root. The app creates per-version folders and resolves Maxon C++ SDK download URLs automatically." />
+          {t('sdk.title')}
+          <HelpHint text={t('sdk.help.title')} />
         </div>
         <div className="mt-1 text-xs text-muted-foreground">
-          Cinema 4D 2024.4 and newer
+          {t('sdk.subtitle')}
         </div>
       </div>
 
@@ -166,25 +180,25 @@ export function SdkConfigPanel() {
         <div className="space-y-4 p-4">
           <div className="space-y-1.5">
             <FieldLabel
-              label="SDK Root"
-              help="Choose one root folder without spaces, such as Documents\\Maxon_SDK. Version folders are created automatically under it."
+              label={t('sdk.fields.sdkRoot')}
+              help={t('sdk.help.sdkRoot')}
             />
             <PathPicker
               value={sdkRoot}
-              title="Choose SDK root"
+              title={t('sdk.picker.sdkRoot')}
               onChange={setSdkRoot}
             />
             <div className="flex gap-2">
               <Button className="flex-1" onClick={() => void autoDetect()}>
                 <Search className="size-4" />
-                Auto Detect
-                <HelpHint text="Detect installed Cinema 4D versions, pick the matching SDK URL, and save the default Maxon_SDK root." />
+                {t('sdk.actions.autoDetect')}
+                <HelpHint text={t('sdk.help.autoDetect')} />
               </Button>
               <Button
                 variant="outline"
                 size="icon"
                 onClick={() => void saveRootConfig()}
-                title="Save SDK root"
+                title={t('sdk.actions.saveRoot')}
               >
                 <Save className="size-4" />
               </Button>
@@ -192,7 +206,7 @@ export function SdkConfigPanel() {
                 variant="outline"
                 size="icon"
                 onClick={() => void loadSdkConfig()}
-                title="Refresh SDK list"
+                title={t('sdk.actions.refresh')}
               >
                 <RefreshCw className="size-4" />
               </Button>
@@ -201,8 +215,8 @@ export function SdkConfigPanel() {
 
           <div className="space-y-2">
             <FieldLabel
-              label="SDK Matrix"
-              help="SDK folders and archives are resolved automatically from the root folder. Missing SDKs are downloaded from Maxon when resolving or building."
+              label={t('sdk.fields.sdkMatrix')}
+              help={t('sdk.help.sdkMatrix')}
             />
             <div className="flex flex-wrap gap-2">
               {versions.map(version => (
@@ -223,7 +237,7 @@ export function SdkConfigPanel() {
             </div>
             {versions.length === 0 || loading ? (
               <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
-                {loading ? 'Loading SDK versions...' : 'No SDK versions found.'}
+                {loading ? t('sdk.loading') : t('sdk.noVersions')}
               </div>
             ) : null}
           </div>
@@ -253,12 +267,12 @@ export function SdkConfigPanel() {
 
           <div className="space-y-2">
             <FieldLabel
-              label="Installed C4D"
-              help="Detected local Cinema 4D installs. Each major version maps to the smallest supported SDK in that major version."
+              label={t('sdk.fields.installedC4d')}
+              help={t('sdk.help.installedC4d')}
             />
             {installedVersions.length === 0 ? (
               <div className="rounded-md border bg-muted/20 p-2 text-xs text-muted-foreground">
-                No local Cinema 4D install detected.
+                {t('sdk.noInstall')}
               </div>
             ) : (
               <div className="space-y-2">

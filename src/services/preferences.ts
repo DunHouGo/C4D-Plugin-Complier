@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { commands, type AppPreferences } from '@/lib/tauri-bindings'
+import i18n from '@/i18n/config'
 
 // Query keys for preferences
 export const preferencesQueryKeys = {
@@ -48,7 +49,9 @@ export function useSavePreferences() {
           error: result.error,
           preferences,
         })
-        toast.error('Failed to save preferences', { description: result.error })
+        toast.error(i18n.t('toast.error.preferencesSaveFailed'), {
+          description: result.error,
+        })
         throw new Error(result.error)
       }
 
@@ -58,7 +61,7 @@ export function useSavePreferences() {
       // Update the cache with the new preferences
       queryClient.setQueryData(preferencesQueryKeys.preferences(), preferences)
       logger.info('Preferences cache updated')
-      toast.success('Preferences saved')
+      toast.success(i18n.t('toast.success.preferencesSaved'))
     },
   })
 }

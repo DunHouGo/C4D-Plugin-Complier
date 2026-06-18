@@ -2,6 +2,15 @@
 
 ## 2026-06-18
 
+- 修复 SDK 根目录配置后的版本解析逻辑：SDK Matrix 现在始终保留 2024.4、2025 和 2026 可选项，并会在配置根目录中递归识别对应版本的 SDK 根目录或 SDK 压缩包。
+- 调整 SDK 来源优先级为配置根目录、本机 Cinema 4D `sdk.zip`、本地缓存、官方下载，避免可用的 2024.4 本机 SDK 被 2026 或官方下载流程覆盖。
+- 兼容旧版 `configs/sdk_sources.json` 分版本配置读取，避免已有 SDK 配置在新版单根目录配置中被忽略。
+- 将编译器内部构建缓存迁移到用户目录下的无空格路径，避免 Maxon CMake/Xcode 脚本在 `Application Support` 路径中生成 2026 工程失败。
+- 将外部插件临时链接目录从 `modules` 改为 `plugin-links`，避免 Maxon CMake 将普通插件误判为需要 `exportedsymbols.txt` 的非插件模块。
+- 清理构建时同步清理对应 SDK preset 的 CMake 生成目录，避免模块文件变化后继续复用过期工程缓存。
+- 修复中文界面未覆盖主工作台的问题，编译参数、SDK Sources、Output Preview、状态面板、按钮和保存偏好提示现在会随语言设置切换。
+- 新增 Plugin Root 自动识别插件名称，选择或拖入插件目录后会自动填充空的 Module 和 Package 字段。
+- 调整主窗口默认布局，启动时默认隐藏左右侧栏，保留标题栏按钮用于按需展开。
 - 新增 macOS C4D C++ 插件编译支持，使用 Maxon SDK `macos_universal_xcode` preset 生成 Xcode Universal 构建目录。
 - 新增 macOS 环境检测，显示 Xcode、Clang、Python、CMake preset 和 `.xlib` 插件二进制扩展名。
 - 新增 macOS Cinema 4D 安装与 `/Applications/Maxon Cinema 4D <version>/sdk.zip` 检测，并支持构建时创建模块符号链接。
