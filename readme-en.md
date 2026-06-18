@@ -1,6 +1,6 @@
 # C4D Plugin Compiler User Guide
 
-C4D Plugin Compiler is a Rust and Tauri 2 desktop tool for building and packaging Cinema 4D C++ plugins. It manages C++ SDK sources for Cinema 4D 2024.4 and newer, checks CMake, Visual Studio 2022, and Windows SDK availability, builds plugins through Maxon's official CMake preset workflow, and creates merged, per-version, and zip release artifacts.
+C4D Plugin Compiler is a Rust and Tauri 2 desktop tool for building and packaging Cinema 4D C++ plugins. It manages C++ SDK sources for Cinema 4D 2024.4 and newer, checks CMake plus the Windows or macOS compiler environment, builds plugins through Maxon's official CMake preset workflow, and creates merged, per-version, and zip release artifacts.
 
 ## Main Interface
 
@@ -33,16 +33,16 @@ SDK resolution order is: extracted SDKs under `SDK Root\<version>\sdk`, download
 - Refresh SDK: re-extract or re-download cached SDKs.
 - Build: resolves SDKs, configures CMake, builds the module, and packages artifacts.
 - Resolve SDKs: resolves SDK sources and refreshes the SDK Matrix without building.
-- Refresh Environment: rechecks CMake, Visual Studio 2022, Windows SDK, and SDK configuration.
+- Refresh Environment: rechecks CMake, the platform compiler, the system SDK, and SDK configuration.
 - Cancel: marks the current build job as cancelled.
 
 ## Output Preview
 
-The right Output Preview panel derives a file tree from the current Package, C4D Versions, Configuration, Package Mode, Output Dir, and Zip settings. It does not write files; it previews the package folders, `.xdl64` binaries, copied `res` location, and zip archives that will be generated.
+The right Output Preview panel derives a file tree from the current Package, C4D Versions, Configuration, Package Mode, Output Dir, and Zip settings. It does not write files; it previews the package folders, Windows `.xdl64` or macOS `.xlib` binaries, copied `res` location, and zip archives that will be generated.
 
 ## Notes
 
-- This version focuses on the Windows build workflow.
-- Building C4D C++ plugins still requires CMake, Visual Studio 2022, and matching SDKs.
+- This version supports Windows and macOS build workflows.
+- Windows builds require CMake, Visual Studio 2022, and matching SDKs. macOS builds require CMake, Xcode 16, Clang, Python 3.8, and matching SDKs.
 - Path fields can be typed manually, selected with the folder button, or filled by dropping a file or folder on the field.
 - Cancel does not force-kill an already running CMake child process.

@@ -1,6 +1,6 @@
 # C4D Plugin Compiler 用户指南
 
-C4D Plugin Compiler 是一个基于 Rust 和 Tauri 2 的 Cinema 4D C++ 插件编译与打包工具。它可以管理 Cinema 4D 2024.4 及之后版本的 C++ SDK 来源，检测 CMake、Visual Studio 2022 和 Windows SDK 环境，通过 Maxon 官方 CMake preset 构建插件，并生成合并包、分版本包和 zip 发布包。
+C4D Plugin Compiler 是一个基于 Rust 和 Tauri 2 的 Cinema 4D C++ 插件编译与打包工具。它可以管理 Cinema 4D 2024.4 及之后版本的 C++ SDK 来源，检测 CMake、Windows 或 macOS 编译环境，通过 Maxon 官方 CMake preset 构建插件，并生成合并包、分版本包和 zip 发布包。
 
 ## 主界面
 
@@ -33,16 +33,16 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 - Refresh SDK：重新解压或下载 SDK 缓存。
 - Build：解析 SDK、配置 CMake、构建模块并打包产物。
 - Resolve SDKs：只解析 SDK 来源并刷新 SDK Matrix。
-- Refresh Environment：重新检测 CMake、Visual Studio 2022、Windows SDK 和 SDK 配置。
+- Refresh Environment：重新检测 CMake、平台编译器、系统 SDK 和 SDK 配置。
 - Cancel：取消当前构建任务标记。
 
 ## Output Preview
 
-右侧 Output Preview 会根据当前 Package、C4D Versions、Configuration、Package Mode、Output Dir 和 Zip 设置生成文件树预览。它不会写入文件，只用于在构建前确认将生成的文件夹、`.xdl64` 二进制文件、`res` 资源复制位置和 zip 包结构。
+右侧 Output Preview 会根据当前 Package、C4D Versions、Configuration、Package Mode、Output Dir 和 Zip 设置生成文件树预览。它不会写入文件，只用于在构建前确认将生成的文件夹、Windows 的 `.xdl64` 或 macOS 的 `.xlib` 二进制文件、`res` 资源复制位置和 zip 包结构。
 
 ## 注意事项
 
-- 当前版本主要面向 Windows 构建流程。
-- 构建 C4D C++ 插件仍需要本机安装 CMake、Visual Studio 2022 和对应 SDK。
+- 当前版本支持 Windows 和 macOS 构建流程。
+- Windows 构建仍需要本机安装 CMake、Visual Studio 2022 和对应 SDK；macOS 构建需要 CMake、Xcode 16、Clang 和 Python 3.8。
 - 路径输入既可以手动输入，也可以点击文件夹按钮选择，或将文件/目录拖拽到输入框区域。
 - 取消任务不会强制杀死已经启动的 CMake 子进程。

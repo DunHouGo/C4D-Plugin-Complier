@@ -34,7 +34,11 @@ tauri-plugin-os = "2"
 log = "0.4"
 regex = "1"
 dirs = "6"
-reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = [
+  "blocking",
+  "json",
+  "rustls-tls",
+], default-features = false }
 walkdir = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 

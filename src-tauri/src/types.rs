@@ -58,6 +58,14 @@ pub enum PackageMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub enum CompilerPlatform {
+    Windows,
+    Macos,
+    Linux,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum SdkSourceMode {
     ConfiguredThenInstalledThenOfficial,
 }
@@ -94,9 +102,15 @@ pub struct ToolStatus {
 pub struct EnvironmentReport {
     pub os: String,
     pub supported: bool,
+    pub compiler_platform: CompilerPlatform,
+    pub cmake_preset: Option<String>,
+    pub binary_extension: Option<String>,
     pub cmake: ToolStatus,
     pub visual_studio: ToolStatus,
     pub windows_sdk: ToolStatus,
+    pub xcode: ToolStatus,
+    pub clang: ToolStatus,
+    pub python: ToolStatus,
     pub installed_sdk_zips: Vec<InstalledSdkZip>,
     pub installed_c4d_versions: Vec<InstalledC4dVersion>,
     pub cache_root: String,

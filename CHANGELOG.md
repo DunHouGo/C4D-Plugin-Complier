@@ -1,5 +1,12 @@
 # 更新日志
 
+## 2026-06-18
+
+- 新增 macOS C4D C++ 插件编译支持，使用 Maxon SDK `macos_universal_xcode` preset 生成 Xcode Universal 构建目录。
+- 新增 macOS 环境检测，显示 Xcode、Clang、Python、CMake preset 和 `.xlib` 插件二进制扩展名。
+- 新增 macOS Cinema 4D 安装与 `/Applications/Maxon Cinema 4D <version>/sdk.zip` 检测，并支持构建时创建模块符号链接。
+- 更新输出预览和中英文用户指南，说明 Windows `.xdl64` 与 macOS `.xlib` 产物差异。
+
 ## 2026-06-15
 
 - 移除左侧 SDK Sources 中重复的 C4D 起始版本选择，并让 SDK Matrix 与构建版本下限自动从本机最小 Cinema 4D 安装版本开始。

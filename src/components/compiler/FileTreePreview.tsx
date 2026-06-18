@@ -1,9 +1,15 @@
+import { useEffect, useState } from 'react'
 import { FileArchive, FileCode2, Folder, FolderTree } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useCompilerStore } from '@/store/compiler-store'
-import type { BuildConfiguration, BuildRequest } from '@/lib/tauri-bindings'
+import type {
+  BuildConfiguration,
+  BuildRequest,
+  EnvironmentReport,
+} from '@/lib/tauri-bindings'
 import { HelpHint } from './HelpHint'
+import { commands } from '@/lib/tauri-bindings'
 
 interface TreeNode {
   name: string
@@ -14,7 +20,17 @@ interface TreeNode {
 
 export function FileTreePreview() {
   const request = useCompilerStore(state => state.request)
-  const tree = buildPreviewTree(request)
+  const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
+  const extension = environment?.binary_extension ?? 'xdl64'
+  const tree = buildPreviewTree(request, extension)
+
+  useEffect(() => {
+    void commands.detectEnvironment().then(result => {
+      if (result.status === 'ok') {
+        setEnvironment(result.data)
+      }
+    })
+  }, [])
 
   return (
     <>
@@ -76,7 +92,10 @@ function TreeNodeView({ node, depth }: { node: TreeNode; depth: number }) {
   )
 }
 
-function buildPreviewTree(request: BuildRequest): TreeNode {
+function buildPreviewTree(
+  request: BuildRequest,
+  binaryExtension: string
+): TreeNode {
   const outputName = lastPathPart(request.output_dir || 'dist')
   const children: TreeNode[] = []
 
@@ -98,7 +117,7 @@ function buildPreviewTree(request: BuildRequest): TreeNode {
         },
         ...request.versions.flatMap(version =>
           buildConfigurations(request.configuration).map(configuration => ({
-            name: `${request.package_name || 'Plugin'} ${version} ${configuration}.xdl64`,
+            name: `${request.package_name || 'Plugin'} ${version} ${configuration}.${binaryExtension}`,
             kind: 'file' as const,
             fileType: 'binary' as const,
           }))
@@ -138,7 +157,7 @@ function buildPreviewTree(request: BuildRequest): TreeNode {
               ],
             },
             {
-              name: `${request.package_name || 'Plugin'} ${version}.xdl64`,
+              name: `${request.package_name || 'Plugin'} ${version}.${binaryExtension}`,
               kind: 'file',
               fileType: 'binary',
             },

@@ -188,8 +188,7 @@ pub fn read_configure_presets(sdk_root: &Path) -> Result<Vec<String>, String> {
 
 pub fn detect_installed_c4d_versions() -> Vec<InstalledC4dVersion> {
     let mut versions = detect_installed_c4d_versions_platform();
-    versions
-        .sort_by(|a, b| version_sort_key(&b.sdk_version).cmp(&version_sort_key(&a.sdk_version)));
+    versions.sort_by_key(|item| std::cmp::Reverse(version_sort_key(&item.sdk_version)));
     versions.dedup_by(|a, b| normalize_path_key(&a.path) == normalize_path_key(&b.path));
     versions
 }
@@ -309,7 +308,29 @@ fn detect_installed_c4d_versions_platform() -> Vec<InstalledC4dVersion> {
         }
     }
 
+    for version in detect_installed_c4d_versions_macos_fallback() {
+        let key = normalize_path_key(&version.path);
+        if seen_install_roots.insert(key) {
+            versions.push(version);
+        }
+    }
+
     versions
+}
+
+#[cfg(target_os = "macos")]
+fn detect_installed_c4d_versions_macos_fallback() -> Vec<InstalledC4dVersion> {
+    let applications = PathBuf::from("/Applications");
+    if !applications.is_dir() {
+        return Vec::new();
+    }
+
+    std::fs::read_dir(&applications)
+        .ok()
+        .into_iter()
+        .flat_map(|entries| entries.flatten())
+        .filter_map(|entry| installed_c4d_version_from_path(&entry.path()))
+        .collect()
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -682,9 +703,25 @@ fn known_sdk_archive_name(version: &str) -> Option<&'static str> {
 fn installed_sdk_zip_path(version: &str) -> PathBuf {
     let install_version = if version == "2024.4" { "2024" } else { version };
 
-    PathBuf::from(format!(
-        r"C:\Program Files\Maxon Cinema 4D {install_version}\sdk.zip"
-    ))
+    #[cfg(target_os = "macos")]
+    {
+        PathBuf::from(format!(
+            "/Applications/Maxon Cinema 4D {install_version}/sdk.zip"
+        ))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        PathBuf::from(format!(
+            r"C:\Program Files\Maxon Cinema 4D {install_version}\sdk.zip"
+        ))
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = install_version;
+        PathBuf::new()
+    }
 }
 
 fn installed_c4d_sdk_version(version: &str) -> Option<String> {

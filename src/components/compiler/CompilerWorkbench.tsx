@@ -57,6 +57,7 @@ export function CompilerWorkbench() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [state, setState] = useState<BuildState>('idle')
   const sdkStartVersionRef = useRef(sdkStartVersion)
+  const compilerPlatform = environment?.compiler_platform ?? 'Unsupported'
 
   const versionNames = useMemo(
     () => sdkVersions.map(version => version.version),
@@ -405,8 +406,31 @@ export function CompilerWorkbench() {
         <div className="grid grid-cols-3 gap-3 border-b p-4">
           <StatusPanel title="Environment">
             <ToolLine label="CMake" tool={environment?.cmake} />
-            <ToolLine label="VS 2022" tool={environment?.visual_studio} />
-            <ToolLine label="Windows SDK" tool={environment?.windows_sdk} />
+            {compilerPlatform === 'Macos' ? (
+              <>
+                <ToolLine label="Xcode" tool={environment?.xcode} />
+                <ToolLine label="Clang" tool={environment?.clang} />
+                <ToolLine label="Python" tool={environment?.python} />
+              </>
+            ) : (
+              <>
+                <ToolLine label="VS 2022" tool={environment?.visual_studio} />
+                <ToolLine label="Windows SDK" tool={environment?.windows_sdk} />
+              </>
+            )}
+            <ToolLine
+              label="Preset"
+              tool={
+                environment?.cmake_preset
+                  ? {
+                      found: true,
+                      path: null,
+                      version: null,
+                      message: environment.cmake_preset,
+                    }
+                  : undefined
+              }
+            />
           </StatusPanel>
           <StatusPanel title="SDK Matrix">
             {sdkResolutions.length === 0 ? (
@@ -581,7 +605,12 @@ function ToolLine({
   tool,
 }: {
   label: string
-  tool?: { found: boolean; version?: string | null; path?: string | null }
+  tool?: {
+    found: boolean
+    message?: string | null
+    version?: string | null
+    path?: string | null
+  }
 }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
@@ -593,7 +622,7 @@ function ToolLine({
         )}
         title={tool?.path ?? undefined}
       >
-        {tool?.found ? tool.version || 'found' : 'missing'}
+        {tool?.found ? tool.version || tool.message || 'found' : 'missing'}
       </span>
     </div>
   )

@@ -5,9 +5,9 @@ import type { BuildRequest } from '@/lib/tauri-bindings'
 export const DEFAULT_SDK_START_VERSION = '2024.4'
 
 export const defaultBuildRequest: BuildRequest = {
-  plugin_root: 'E:\\Boghma\\boghma hub\\Done Paid\\Boghma-WaterMark',
-  module_name: 'postwatermark',
-  package_name: 'Boghma WaterMark',
+  plugin_root: '',
+  module_name: '',
+  package_name: '',
   versions: [DEFAULT_SDK_START_VERSION, '2025', '2026'],
   configuration: 'Release',
   sdk_source: 'ConfiguredThenInstalledThenOfficial',

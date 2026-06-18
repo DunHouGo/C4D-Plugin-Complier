@@ -9,7 +9,7 @@ use crate::compiler::env::detect_cmake_path;
 use crate::compiler::package::package_outputs;
 use crate::compiler::sdk::{prepare_sdk, read_configure_presets};
 use crate::compiler::{
-    local_data_root, parse_version_list, require_dir, sanitize_path_name, DEFAULT_PRESET_WINDOWS,
+    current_build_platform, local_data_root, parse_version_list, require_dir, sanitize_path_name,
 };
 use crate::types::{BuildArtifact, BuildLogEvent, BuildProgressEvent, BuildRequest};
 
@@ -22,9 +22,13 @@ pub fn execute_build(
     log: LogCallback<'_>,
     progress: ProgressCallback<'_>,
 ) -> Result<Vec<BuildArtifact>, String> {
-    if !cfg!(target_os = "windows") {
-        return Err("Only Windows builds are implemented in this version".to_string());
-    }
+    let build_platform = current_build_platform();
+    let preset = build_platform
+        .preset
+        .ok_or_else(|| "C4D builds are currently supported on Windows and macOS".to_string())?;
+    let binary_extension = build_platform
+        .binary_extension
+        .ok_or_else(|| "No binary extension is configured for this platform".to_string())?;
 
     validate_request(request)?;
     let cmake = detect_cmake_path().ok_or_else(|| "CMake was not found".to_string())?;
@@ -46,16 +50,24 @@ pub fn execute_build(
                 .ok_or_else(|| format!("SDK {version} did not resolve to a root path"))?,
         );
         let presets = read_configure_presets(&sdk_root)?;
-        if !presets.iter().any(|name| name == DEFAULT_PRESET_WINDOWS) {
+        if !presets.iter().any(|name| name == preset) {
             return Err(format!(
-                "SDK {version} does not provide preset {DEFAULT_PRESET_WINDOWS}. Available presets: {}",
+                "SDK {version} does not provide preset {preset}. Available presets: {}",
                 presets.join(", ")
             ));
         }
 
         let modules_dir = prepare_module_alias(request)?;
-        let build_dir = build_dir_for(&sdk_root, version)?;
-        configure_sdk(&cmake, &sdk_root, &build_dir, &modules_dir, log, job_id)?;
+        let build_dir = build_dir_for(&sdk_root, version, preset)?;
+        configure_sdk(
+            &cmake,
+            &sdk_root,
+            &build_dir,
+            &modules_dir,
+            preset,
+            log,
+            job_id,
+        )?;
 
         for configuration in request.configuration.cmake_configs() {
             current += 1;
@@ -73,7 +85,12 @@ pub fn execute_build(
                 log,
                 job_id,
             )?;
-            let binary = find_plugin_binary(&build_dir, configuration, &request.module_name)?;
+            let binary = find_plugin_binary(
+                &build_dir,
+                configuration,
+                &request.module_name,
+                binary_extension,
+            )?;
             built_binaries.push((version.clone(), configuration.to_string(), binary));
         }
     }
@@ -99,6 +116,7 @@ fn validate_request(request: &BuildRequest) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
 fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
     let modules_root = local_data_root()?.join("modules").join(format!(
         "{}_modules",
@@ -135,12 +153,50 @@ fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
     Ok(modules_root)
 }
 
+#[cfg(target_os = "macos")]
+fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
+    let modules_root = local_data_root()?.join("modules").join(format!(
+        "{}_modules",
+        sanitize_path_name(&request.module_name)
+    ));
+    std::fs::create_dir_all(&modules_root)
+        .map_err(|error| format!("Failed to create {}: {error}", modules_root.display()))?;
+
+    let link = modules_root.join(&request.module_name);
+    let target = PathBuf::from(&request.plugin_root)
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve plugin root: {error}"))?;
+
+    if link.exists() {
+        if same_path(&link, &target) {
+            return Ok(modules_root);
+        }
+        remove_link_or_dir(&link)?;
+    }
+
+    std::os::unix::fs::symlink(&target, &link).map_err(|error| {
+        format!(
+            "Failed to create module symlink {} -> {}: {error}",
+            link.display(),
+            target.display()
+        )
+    })?;
+
+    Ok(modules_root)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn prepare_module_alias(_request: &BuildRequest) -> Result<PathBuf, String> {
+    Err("C4D builds are currently supported on Windows and macOS".to_string())
+}
+
 fn same_path(left: &Path, right: &Path) -> bool {
     left.canonicalize()
         .ok()
         .is_some_and(|left_path| left_path == right)
 }
 
+#[cfg(target_os = "windows")]
 fn remove_junction(path: &Path) -> Result<(), String> {
     let status = Command::new("cmd")
         .args(["/c", "rmdir"])
@@ -154,12 +210,25 @@ fn remove_junction(path: &Path) -> Result<(), String> {
     }
 }
 
-fn build_dir_for(sdk_root: &Path, version: &str) -> Result<PathBuf, String> {
+#[cfg(target_os = "macos")]
+fn remove_link_or_dir(path: &Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("Failed to inspect {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() || metadata.is_file() {
+        std::fs::remove_file(path)
+            .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
+    } else {
+        std::fs::remove_dir_all(path)
+            .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
+    }
+}
+
+fn build_dir_for(sdk_root: &Path, version: &str, preset: &str) -> Result<PathBuf, String> {
     Ok(local_data_root()?
         .join("builds")
         .join(format!("Cinema4D_{version}"))
         .join(sanitize_path_name(&sdk_root.display().to_string()))
-        .join(DEFAULT_PRESET_WINDOWS))
+        .join(preset))
 }
 
 fn configure_sdk(
@@ -167,6 +236,7 @@ fn configure_sdk(
     sdk_root: &Path,
     build_dir: &Path,
     modules_dir: &Path,
+    preset: &str,
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<(), String> {
@@ -174,7 +244,7 @@ fn configure_sdk(
         .map_err(|error| format!("Failed to create {}: {error}", build_dir.display()))?;
     let args = vec![
         "--preset".to_string(),
-        DEFAULT_PRESET_WINDOWS.to_string(),
+        preset.to_string(),
         "-B".to_string(),
         build_dir.display().to_string(),
         format!("-DMAXON_SDK_MODULES_DIR={}", modules_dir.display()),
@@ -240,17 +310,19 @@ fn find_plugin_binary(
     build_dir: &Path,
     configuration: &str,
     module_name: &str,
+    binary_extension: &str,
 ) -> Result<PathBuf, String> {
     let plugin_dir = build_dir
         .join("bin")
         .join(configuration)
         .join("plugins")
         .join(module_name);
-    let expected = plugin_dir.join(format!("{module_name}.xdl64"));
+    let expected = plugin_dir.join(format!("{module_name}.{binary_extension}"));
     if expected.is_file() {
         return Ok(expected);
     }
 
+    let expected_file_name = format!("{module_name}.{binary_extension}");
     WalkDir::new(build_dir)
         .into_iter()
         .filter_map(Result::ok)
@@ -258,11 +330,11 @@ fn find_plugin_binary(
         .find(|path| {
             path.file_name()
                 .and_then(|value| value.to_str())
-                .is_some_and(|file_name| file_name == format!("{module_name}.xdl64"))
+                .is_some_and(|file_name| file_name == expected_file_name)
         })
         .ok_or_else(|| {
             format!(
-                "Built binary {module_name}.xdl64 was not found under {}",
+                "Built binary {expected_file_name} was not found under {}",
                 build_dir.display()
             )
         })
