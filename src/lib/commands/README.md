@@ -21,12 +21,12 @@ function MyComponent() {
   const context = useCommandContext()
 
   const handleButtonClick = () => {
-    executeCommand('toggle-sidebar', context)
+    executeCommand('open-preferences', context)
   }
 
   return (
     <button onClick={handleButtonClick}>
-      Toggle Sidebar
+      Open Preferences
     </button>
   )
 }
@@ -50,7 +50,7 @@ export const myFeatureCommands: AppCommand[] = [
       // Direct store access using getState() pattern
       const currentState = useUIStore.getState()
 
-      // Call actions: context.toggleSidebar()
+      // Call actions: context.openPreferences()
       // Show feedback: context.showToast('Done!', 'success')
     },
 
@@ -89,10 +89,8 @@ Commands use direct store access for optimal performance:
 ```typescript
 execute: context => {
   // ✅ Good: Direct store access in commands
-  const { sidebarVisible, toggleSidebar } = useUIStore.getState()
-  if (!sidebarVisible) {
-    toggleSidebar()
-  }
+  const { preferencesOpen } = useUIStore.getState()
+  if (!preferencesOpen) context.openPreferences()
 }
 ```
 
@@ -103,8 +101,8 @@ Context only provides essential actions, no state subscriptions:
 ```typescript
 // Only essential actions - no state values
 export function useCommandContext(): CommandContext {
-  const { toggleSidebar } = useUIStore()
-  return { toggleSidebar /* other actions */ }
+  const setPreferencesOpen = useUIStore(state => state.setPreferencesOpen)
+  return { openPreferences: () => setPreferencesOpen(true) /* other actions */ }
 }
 ```
 
@@ -112,10 +110,6 @@ export function useCommandContext(): CommandContext {
 
 ### Navigation Commands
 
-- `toggle-sidebar` - Show/hide sidebar (always available)
-- `show-sidebar` - Show sidebar (only when hidden)
-- `hide-sidebar` - Hide sidebar (only when visible)
-- `toggle-command-palette` - Show/hide command palette
 - `open-preferences` - Open preferences dialog
 
 ## Command Structure (Simplified)

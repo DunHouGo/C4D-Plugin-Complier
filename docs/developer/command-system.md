@@ -92,13 +92,13 @@ const result = await executeCommand(commandId, context)
 ```typescript
 // ✅ Good: Direct store access in execute
 execute: () => {
-  const { leftSidebarVisible, setLeftSidebarVisible } = useUIStore.getState()
-  setLeftSidebarVisible(!leftSidebarVisible)
+  const { preferencesOpen, setPreferencesOpen } = useUIStore.getState()
+  if (!preferencesOpen) setPreferencesOpen(true)
 }
 
 // ❌ Bad: Hook usage (would cause re-renders)
-const { leftSidebarVisible } = useUIStore()
-execute: () => setLeftSidebarVisible(!leftSidebarVisible)
+const { preferencesOpen } = useUIStore()
+execute: () => setPreferencesOpen(!preferencesOpen)
 ```
 
 ## Integration Points

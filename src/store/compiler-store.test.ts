@@ -42,7 +42,7 @@ describe('CompilerStore', () => {
     })
   })
 
-  it('stores build artifacts for the result sidebar', () => {
+  it('stores build artifacts for the result panel', () => {
     const { addArtifact, setArtifacts } = useCompilerStore.getState()
 
     addArtifact({

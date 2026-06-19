@@ -2,9 +2,9 @@ import type { LucideIcon } from 'lucide-react'
 
 export interface AppCommand {
   id: string
-  /** Translation key for the command label (e.g., 'commands.showLeftSidebar.label') */
+  /** Translation key for the command label (e.g., 'commands.openPreferences.label') */
   labelKey: string
-  /** Translation key for the command description (e.g., 'commands.showLeftSidebar.description') */
+  /** Translation key for the command description (e.g., 'commands.openPreferences.description') */
   descriptionKey?: string
   icon?: LucideIcon
   group?: string

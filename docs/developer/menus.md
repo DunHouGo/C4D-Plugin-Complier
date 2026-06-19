@@ -116,10 +116,10 @@ await PredefinedMenuItem.new({ item: 'Paste' })
 ### Submenus
 
 ```typescript
-const viewSubmenu = await Submenu.new({
-  text: t('menu.view'),
+const appSubmenu = await Submenu.new({
+  text: APP_NAME,
   items: [
-    await MenuItem.new({ id: 'toggle-sidebar', text: t('menu.toggleSidebar'), ... }),
+    await MenuItem.new({ id: 'preferences', text: t('menu.preferences'), ... }),
   ],
 })
 ```
@@ -162,9 +162,8 @@ Add the same key to all language files in `/locales/`.
 Menu actions use Zustand's `getState()` pattern for accessing current state:
 
 ```typescript
-function handleToggleLeftSidebar(): void {
-  const store = useUIStore.getState()
-  store.setLeftSidebarVisible(!store.leftSidebarVisible)
+function handleOpenPreferences(): void {
+  useUIStore.getState().setPreferencesOpen(true)
 }
 ```
 

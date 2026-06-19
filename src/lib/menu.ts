@@ -68,28 +68,9 @@ export async function buildAppMenu(): Promise<Menu> {
       ],
     })
 
-    // Build the View submenu
-    const viewSubmenu = await Submenu.new({
-      text: t('menu.view'),
-      items: [
-        await MenuItem.new({
-          id: 'toggle-left-sidebar',
-          text: t('menu.toggleLeftSidebar'),
-          accelerator: 'CmdOrCtrl+1',
-          action: handleToggleLeftSidebar,
-        }),
-        await MenuItem.new({
-          id: 'toggle-right-sidebar',
-          text: t('menu.toggleRightSidebar'),
-          accelerator: 'CmdOrCtrl+2',
-          action: handleToggleRightSidebar,
-        }),
-      ],
-    })
-
     // Build the complete menu
     const menu = await Menu.new({
-      items: [appSubmenu, viewSubmenu],
+      items: [appSubmenu],
     })
 
     // Set as the application menu
@@ -150,14 +131,4 @@ async function handleCheckForUpdates(): Promise<void> {
 function handleOpenPreferences(): void {
   logger.info('Preferences menu item clicked')
   useUIStore.getState().setPreferencesOpen(true)
-}
-
-function handleToggleLeftSidebar(): void {
-  logger.info('Toggle Left Sidebar menu item clicked')
-  useUIStore.getState().toggleLeftSidebar()
-}
-
-function handleToggleRightSidebar(): void {
-  logger.info('Toggle Right Sidebar menu item clicked')
-  useUIStore.getState().toggleRightSidebar()
 }

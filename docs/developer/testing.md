@@ -128,16 +128,16 @@ test('component with query', () => {
 import { renderHook, act } from '@testing-library/react'
 import { useUIStore } from '@/store/ui-store'
 
-test('toggles sidebar visibility', () => {
+test('toggles preferences visibility', () => {
   const { result } = renderHook(() => useUIStore())
 
-  expect(result.current.leftSidebarVisible).toBe(true)
+  expect(result.current.preferencesOpen).toBe(false)
 
   act(() => {
-    result.current.setLeftSidebarVisible(false)
+    result.current.setPreferencesOpen(true)
   })
 
-  expect(result.current.leftSidebarVisible).toBe(false)
+  expect(result.current.preferencesOpen).toBe(true)
 })
 ```
 

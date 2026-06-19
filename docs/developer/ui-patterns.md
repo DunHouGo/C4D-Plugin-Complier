@@ -218,8 +218,6 @@ Apply `data-tauri-drag-region` to elements that should drag the window (like tit
 src/components/
 ├── layout/           # App structure
 │   ├── MainWindow.tsx
-│   ├── LeftSideBar.tsx
-│   ├── RightSideBar.tsx
 │   └── MainWindowContent.tsx
 ├── titlebar/         # Window chrome
 │   ├── TitleBar.tsx
@@ -309,33 +307,20 @@ Layout components should:
 - Not set external margins (let parent control spacing)
 
 ```tsx
-interface SideBarProps {
+interface MainWindowContentProps {
   children?: React.ReactNode
   className?: string
 }
 
-export function LeftSideBar({ children, className }: SideBarProps) {
+export function MainWindowContent({
+  children,
+  className,
+}: MainWindowContentProps) {
   return (
-    <div className={cn('flex flex-col h-full overflow-hidden', className)}>
+    <div className={cn('flex h-full flex-col bg-background', className)}>
       {children}
     </div>
   )
-}
-```
-
-### Visibility with CSS
-
-For panels that toggle visibility, prefer CSS over conditional rendering:
-
-```tsx
-// Good: Preserves component state
-;<ResizablePanel className={cn(!visible && 'hidden')}>
-  <SideBar />
-</ResizablePanel>
-
-// Avoid: Loses component state on hide/show
-{
-  visible && <SideBar />
 }
 ```
 

@@ -99,9 +99,7 @@ Event-Driven Bridge
 ```
 MainWindow (Top-level orchestrator)
 ├── TitleBar (Window controls + toolbar)
-├── LeftSidebar (Collapsible panel)
 ├── MainWindowContent (Primary content area)
-├── RightSidebar (Collapsible panel)
 └── Global Overlays
     ├── PreferencesDialog (Settings)
     ├── CommandPalette (Cmd+K)
@@ -114,7 +112,7 @@ MainWindow (Top-level orchestrator)
 locales/                  # Translation JSON files
 src/
 ├── components/
-│   ├── layout/          # Layout components (MainWindow, sidebars)
+│   ├── layout/          # Layout components (MainWindow, main content)
 │   ├── command-palette/ # Command palette system
 │   ├── preferences/     # Preferences dialog system
 │   └── ui/              # Shadcn UI components

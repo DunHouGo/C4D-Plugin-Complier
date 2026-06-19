@@ -4,9 +4,11 @@ import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useTranslation } from 'react-i18next'
 import {
+  Archive,
   Box,
   CheckCircle2,
   Copy,
+  FolderOpen,
   Hammer,
   ListFilter,
   Play,
@@ -75,6 +77,7 @@ export function CompilerWorkbench() {
   const request = useCompilerStore(state => state.request)
   const updateRequest = useCompilerStore(state => state.updateRequest)
   const updatePluginRoot = useCompilerStore(state => state.updatePluginRoot)
+  const artifacts = useCompilerStore(state => state.artifacts)
   const setArtifacts = useCompilerStore(state => state.setArtifacts)
   const addArtifact = useCompilerStore(state => state.addArtifact)
   const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
@@ -584,7 +587,7 @@ export function CompilerWorkbench() {
           </StatusPanel>
         </div>
 
-        <div className="grid min-h-0 flex-1 overflow-hidden">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] overflow-hidden">
           <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm font-medium">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -688,6 +691,46 @@ export function CompilerWorkbench() {
               </div>
             </ScrollArea>
           </section>
+
+          <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l">
+            <div className="flex h-10 items-center gap-2 border-b px-4 text-sm font-medium">
+              <Archive className="size-4" />
+              {t('compiler.panels.artifacts')}
+            </div>
+            <ScrollArea className="min-h-0 flex-1 overflow-hidden">
+              <div className="space-y-2 p-3">
+                {artifacts.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">
+                    {t('compiler.empty.artifacts')}
+                  </div>
+                ) : (
+                  artifacts.map(item => (
+                    <div
+                      key={item.path}
+                      className="rounded-md border bg-background p-3"
+                    >
+                      <div className="text-sm font-medium">{item.kind}</div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">
+                        {item.path}
+                      </div>
+                      <Button
+                        className="mt-2"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          void commands.openArtifactFolder(item.path)
+                        }
+                      >
+                        <FolderOpen className="size-3.5" />
+                        {t('compiler.actions.open')}
+                        <HelpHint text={t('compiler.help.openArtifact')} />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </aside>
         </div>
       </main>
     </div>

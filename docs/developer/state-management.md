@@ -47,16 +47,15 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 
 interface UIState {
-  sidebarVisible: boolean
-  toggleSidebar: () => void
+  preferencesOpen: boolean
+  setPreferencesOpen: (open: boolean) => void
 }
 
 export const useUIStore = create<UIState>()(
   devtools(
     set => ({
-      sidebarVisible: true,
-      toggleSidebar: () =>
-        set(state => ({ sidebarVisible: !state.sidebarVisible })),
+      preferencesOpen: false,
+      setPreferencesOpen: open => set({ preferencesOpen: open }),
     }),
     { name: 'ui-store' }
   )
@@ -126,14 +125,14 @@ const currentFileName = useEditorStore(state => state.currentFile?.name)
 
 ### CSS Visibility vs Conditional Rendering
 
-For stateful UI components (like `react-resizable-panels`), use CSS visibility:
+For stateful UI components such as dialogs and panels, prefer visibility/state APIs that preserve internal state when needed:
 
 ```typescript
 // ❌ BAD: Conditional rendering breaks stateful components
-{sidebarVisible ? <ResizablePanel /> : null}
+{preferencesOpen ? <PreferencesDialog /> : null}
 
 // ✅ GOOD: CSS visibility preserves component tree
-<ResizablePanel className={sidebarVisible ? '' : 'hidden'} />
+<PreferencesDialog open={preferencesOpen} onOpenChange={setPreferencesOpen} />
 ```
 
 ### React Compiler (Automatic Memoization)
