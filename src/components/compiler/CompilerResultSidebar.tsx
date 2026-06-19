@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Archive, FolderOpen, FolderTree } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,18 @@ type ResultPanel = 'artifacts' | 'preview'
 export function CompilerResultSidebar() {
   const { t } = useTranslation()
   const artifacts = useCompilerStore(state => state.artifacts)
-  const [resultPanel, setResultPanel] = useState<ResultPanel>('artifacts')
+  const [resultPanel, setResultPanel] = useState<ResultPanel>(() =>
+    artifacts.length > 0 ? 'artifacts' : 'preview'
+  )
+  const prevArtifactsLength = useRef(artifacts.length)
+
+  useEffect(() => {
+    // Auto-switch to artifacts panel when build completes and artifacts appear
+    if (prevArtifactsLength.current === 0 && artifacts.length > 0) {
+      setResultPanel('artifacts')
+    }
+    prevArtifactsLength.current = artifacts.length
+  }, [artifacts.length])
 
   return (
     <>
