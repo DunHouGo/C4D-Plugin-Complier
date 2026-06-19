@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 use walkdir::WalkDir;
@@ -44,7 +45,7 @@ pub fn execute_build(
     let mut built_binaries = Vec::new();
 
     for version in &versions {
-        log_info(log, job_id, &format!("Preparing Cinema 4D {version} SDK"));
+        log_sdk(log, job_id, &format!("Preparing Cinema 4D {version} SDK"));
         let sdk = prepare_sdk(version, request.refresh_sdk_cache)?;
         let sdk_root = PathBuf::from(
             sdk.sdk_root
@@ -62,10 +63,11 @@ pub fn execute_build(
                 ));
             }
 
-            let modules_dir = prepare_module_alias(request)?;
+            let build_module_name = cmake_target_name(&request.module_name);
+            let module_alias = prepare_module_alias(request, &build_module_name)?;
             let build_dir = build_dir_for(&sdk_root, version, preset)?;
             if request.clean_output && build_dir.exists() {
-                log_info(
+                log_sdk(
                     log,
                     job_id,
                     &format!("Cleaning SDK build directory: {}", build_dir.display()),
@@ -77,7 +79,7 @@ pub fn execute_build(
                 &cmake,
                 &sdk_root,
                 &build_dir,
-                &modules_dir,
+                &module_alias.modules_dir,
                 preset,
                 log,
                 job_id,
@@ -95,14 +97,14 @@ pub fn execute_build(
                     &cmake,
                     &build_dir,
                     configuration,
-                    &request.module_name,
+                    &build_module_name,
                     log,
                     job_id,
                 )?;
                 let binary = find_plugin_binary(
                     &build_dir,
                     configuration,
-                    &request.module_name,
+                    &build_module_name,
                     binary_extension,
                 )?;
                 built_binaries.push((version.clone(), configuration.to_string(), binary));
@@ -139,7 +141,7 @@ pub fn execute_build(
         }
     }
 
-    log_info(log, job_id, "Packaging build outputs");
+    log_package(log, job_id, "Packaging build outputs");
     package_outputs(request, &built_binaries)
 }
 
@@ -160,23 +162,29 @@ fn validate_request(request: &BuildRequest) -> Result<(), String> {
     Ok(())
 }
 
+struct ModuleAlias {
+    modules_dir: PathBuf,
+}
+
 #[cfg(target_os = "windows")]
-fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
-    let modules_root = local_data_root()?.join("plugin-links").join(format!(
-        "{}_modules",
-        sanitize_path_name(&request.module_name)
-    ));
+fn prepare_module_alias(request: &BuildRequest, alias_name: &str) -> Result<ModuleAlias, String> {
+    let modules_root = local_data_root()?
+        .join("plugin-links")
+        .join(format!("{}_modules", sanitize_path_name(alias_name)));
     std::fs::create_dir_all(&modules_root)
         .map_err(|error| format!("Failed to create {}: {error}", modules_root.display()))?;
+    remove_stale_module_aliases(&modules_root, alias_name)?;
 
-    let link = modules_root.join(&request.module_name);
+    let link = modules_root.join(alias_name);
     let target = PathBuf::from(&request.plugin_root)
         .canonicalize()
         .map_err(|error| format!("Failed to resolve plugin root: {error}"))?;
 
     if link.exists() {
         if same_path(&link, &target) {
-            return Ok(modules_root);
+            return Ok(ModuleAlias {
+                modules_dir: modules_root,
+            });
         }
         remove_junction(&link)?;
     }
@@ -194,26 +202,30 @@ fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
         ));
     }
 
-    Ok(modules_root)
+    Ok(ModuleAlias {
+        modules_dir: modules_root,
+    })
 }
 
 #[cfg(target_os = "macos")]
-fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
-    let modules_root = local_data_root()?.join("plugin-links").join(format!(
-        "{}_modules",
-        sanitize_path_name(&request.module_name)
-    ));
+fn prepare_module_alias(request: &BuildRequest, alias_name: &str) -> Result<ModuleAlias, String> {
+    let modules_root = local_data_root()?
+        .join("plugin-links")
+        .join(format!("{}_modules", sanitize_path_name(alias_name)));
     std::fs::create_dir_all(&modules_root)
         .map_err(|error| format!("Failed to create {}: {error}", modules_root.display()))?;
+    remove_stale_module_aliases(&modules_root, alias_name)?;
 
-    let link = modules_root.join(&request.module_name);
+    let link = modules_root.join(alias_name);
     let target = PathBuf::from(&request.plugin_root)
         .canonicalize()
         .map_err(|error| format!("Failed to resolve plugin root: {error}"))?;
 
     if link.exists() {
         if same_path(&link, &target) {
-            return Ok(modules_root);
+            return Ok(ModuleAlias {
+                modules_dir: modules_root,
+            });
         }
         remove_link_or_dir(&link)?;
     }
@@ -226,11 +238,13 @@ fn prepare_module_alias(request: &BuildRequest) -> Result<PathBuf, String> {
         )
     })?;
 
-    Ok(modules_root)
+    Ok(ModuleAlias {
+        modules_dir: modules_root,
+    })
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn prepare_module_alias(_request: &BuildRequest) -> Result<PathBuf, String> {
+fn prepare_module_alias(_request: &BuildRequest, _alias_name: &str) -> Result<ModuleAlias, String> {
     Err("C4D builds are currently supported on Windows and macOS".to_string())
 }
 
@@ -238,6 +252,43 @@ fn same_path(left: &Path, right: &Path) -> bool {
     left.canonicalize()
         .ok()
         .is_some_and(|left_path| left_path == right)
+}
+
+fn remove_stale_module_aliases(modules_root: &Path, alias_name: &str) -> Result<(), String> {
+    for entry in std::fs::read_dir(modules_root)
+        .map_err(|error| format!("Failed to read {}: {error}", modules_root.display()))?
+    {
+        let entry =
+            entry.map_err(|error| format!("Failed to read {}: {error}", modules_root.display()))?;
+        if entry.file_name().to_string_lossy() == alias_name {
+            continue;
+        }
+        remove_module_alias_entry(&entry.path())?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn remove_module_alias_entry(path: &Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("Failed to inspect {}: {error}", path.display()))?;
+    if metadata.file_type().is_symlink() || metadata.is_file() {
+        std::fs::remove_file(path)
+            .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
+    } else {
+        remove_junction(path)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn remove_module_alias_entry(path: &Path) -> Result<(), String> {
+    remove_link_or_dir(path)
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn remove_module_alias_entry(path: &Path) -> Result<(), String> {
+    let _ = path;
+    Err("C4D builds are currently supported on Windows and macOS".to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -297,6 +348,15 @@ fn configure_sdk(
     run_command(cmake, &args, sdk_root, log, job_id)
 }
 
+fn cmake_target_name(module_name: &str) -> String {
+    let sanitized = sanitize_path_name(module_name);
+    if sanitized.is_empty() {
+        module_name.to_string()
+    } else {
+        sanitized
+    }
+}
+
 fn build_target(
     cmake: &str,
     build_dir: &Path,
@@ -328,7 +388,7 @@ fn prepare_legacy_module_workspace(
     }
     copy_dir_recursive(Path::new(&request.plugin_root), &module_root)?;
     ensure_legacy_solution_includes_module(sdk_root, &request.module_name)?;
-    log_info(
+    log_sdk(
         log,
         job_id,
         &format!(
@@ -413,6 +473,7 @@ fn build_legacy_target_with_retry(
             log_warn(
                 log,
                 job_id,
+                "toolchain",
                 "Legacy SDK generated files were created late; retrying the Xcode build once",
             );
             build_legacy_target(sdk_root, configuration, module_name, log, job_id)
@@ -505,7 +566,7 @@ fn resolve_legacy_xcode_scheme(
         "-project".to_string(),
         project.display().to_string(),
     ];
-    log_info(
+    log_command(
         log,
         job_id,
         &format!("Running: xcodebuild {}", args.join(" ")),
@@ -518,7 +579,7 @@ fn resolve_legacy_xcode_scheme(
         .map_err(|error| format!("Failed to list Xcode schemes: {error}"))?;
 
     for line in String::from_utf8_lossy(&output.stderr).lines() {
-        log_warn(log, job_id, line);
+        log_warn(log, job_id, "toolchain", line);
     }
     if !output.status.success() {
         return Err(format!(
@@ -543,6 +604,7 @@ fn resolve_legacy_xcode_scheme(
             log_warn(
                 log,
                 job_id,
+                "toolchain",
                 &format!(
                     "Using legacy Xcode scheme '{scheme}' because '{module_name}' was not listed"
                 ),
@@ -654,7 +716,7 @@ fn run_command_with_path_prefix(
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<(), String> {
-    log_info(
+    log_command(
         log,
         job_id,
         &format!("Running: {program} {}", args.join(" ")),
@@ -670,10 +732,10 @@ fn run_command_with_path_prefix(
         .map_err(|error| format!("Failed to run {program}: {error}"))?;
 
     for line in String::from_utf8_lossy(&output.stdout).lines() {
-        log_info(log, job_id, line);
+        log_command_output(log, job_id, program, "info", line);
     }
     for line in String::from_utf8_lossy(&output.stderr).lines() {
-        log_warn(log, job_id, line);
+        log_command_output(log, job_id, program, "warn", line);
     }
 
     if output.status.success() {
@@ -681,10 +743,11 @@ fn run_command_with_path_prefix(
     } else {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
+        let output_text = format!("{stdout}\n{stderr}");
         Err(format!(
             "Command failed with status {}:\n{}",
             output.status,
-            tail_lines(&format!("{stdout}\n{stderr}"), 80)
+            command_failure_summary(&output_text)
         ))
     }
 }
@@ -693,6 +756,51 @@ fn tail_lines(text: &str, count: usize) -> String {
     let lines = text.lines().collect::<Vec<_>>();
     let start = lines.len().saturating_sub(count);
     lines[start..].join("\n")
+}
+
+fn command_failure_summary(text: &str) -> String {
+    let diagnostic = diagnostic_context(text);
+    if diagnostic.is_empty() {
+        tail_lines(text, 80)
+    } else {
+        diagnostic
+    }
+}
+
+fn diagnostic_context(text: &str) -> String {
+    let lines = text.lines().collect::<Vec<_>>();
+    let mut selected = Vec::<usize>::new();
+    for (index, line) in lines.iter().enumerate() {
+        if is_diagnostic_line(line) {
+            let start = index.saturating_sub(2);
+            let end = (index + 3).min(lines.len().saturating_sub(1));
+            selected.extend(start..=end);
+        }
+    }
+
+    selected.sort_unstable();
+    selected.dedup();
+    if selected.is_empty() {
+        return String::new();
+    }
+
+    let mut result = Vec::new();
+    let mut previous = None;
+    for index in selected {
+        if previous.is_some_and(|value| index > value + 1) {
+            result.push("...".to_string());
+        }
+        result.push(lines[index].to_string());
+        previous = Some(index);
+    }
+    result.join("\n")
+}
+
+fn is_diagnostic_line(line: &str) -> bool {
+    line.contains("error:")
+        || line.contains("fatal error:")
+        || line.contains("** BUILD FAILED **")
+        || line.contains("The following build commands failed:")
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
@@ -778,7 +886,7 @@ fn run_command(
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<(), String> {
-    log_info(
+    log_command(
         log,
         job_id,
         &format!("Running: {program} {}", args.join(" ")),
@@ -792,16 +900,23 @@ fn run_command(
         .map_err(|error| format!("Failed to run {program}: {error}"))?;
 
     for line in String::from_utf8_lossy(&output.stdout).lines() {
-        log_info(log, job_id, line);
+        log_command_output(log, job_id, program, "info", line);
     }
     for line in String::from_utf8_lossy(&output.stderr).lines() {
-        log_warn(log, job_id, line);
+        log_command_output(log, job_id, program, "warn", line);
     }
 
     if output.status.success() {
         Ok(())
     } else {
-        Err(format!("Command failed with status {}", output.status))
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let output_text = format!("{stdout}\n{stderr}");
+        Err(format!(
+            "Command failed with status {}:\n{}",
+            output.status,
+            command_failure_summary(&output_text)
+        ))
     }
 }
 
@@ -839,20 +954,66 @@ fn find_plugin_binary(
         })
 }
 
-fn log_info(log: LogCallback<'_>, job_id: &str, message: &str) {
+fn log_sdk(log: LogCallback<'_>, job_id: &str, message: &str) {
+    log_event(log, job_id, "info", "sdk", message);
+}
+
+fn log_package(log: LogCallback<'_>, job_id: &str, message: &str) {
+    log_event(log, job_id, "info", "package", message);
+}
+
+fn log_command(log: LogCallback<'_>, job_id: &str, message: &str) {
+    log_event(log, job_id, "info", "command", message);
+}
+
+fn log_command_output(
+    log: LogCallback<'_>,
+    job_id: &str,
+    program: &str,
+    level: &str,
+    message: &str,
+) {
+    log_event(log, job_id, level, command_log_category(program), message);
+}
+
+fn log_warn(log: LogCallback<'_>, job_id: &str, category: &str, message: &str) {
+    log_event(log, job_id, "warn", category, message);
+}
+
+fn log_event(log: LogCallback<'_>, job_id: &str, level: &str, category: &str, message: &str) {
     log(BuildLogEvent {
         job_id: job_id.to_string(),
-        level: "info".to_string(),
+        level: level.to_string(),
+        category: category.to_string(),
+        timestamp: build_log_timestamp(),
         message: message.to_string(),
     });
 }
 
-fn log_warn(log: LogCallback<'_>, job_id: &str, message: &str) {
-    log(BuildLogEvent {
-        job_id: job_id.to_string(),
-        level: "warn".to_string(),
-        message: message.to_string(),
-    });
+fn command_log_category(program: &str) -> &'static str {
+    let name = Path::new(program)
+        .file_name()
+        .and_then(|file_name| file_name.to_str())
+        .unwrap_or(program)
+        .to_ascii_lowercase();
+
+    if name.contains("cmake") {
+        "cmake"
+    } else if name.contains("xcodebuild") {
+        "xcode"
+    } else if name.contains("generate_solution") {
+        "sdk"
+    } else {
+        "toolchain"
+    }
+}
+
+pub fn build_log_timestamp() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or_default();
+    millis.to_string()
 }
 
 #[cfg(test)]
@@ -861,6 +1022,30 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+
+    #[test]
+    fn cmake_target_name_removes_spaces() {
+        assert_eq!(cmake_target_name("Boghma WaterMark"), "Boghma_WaterMark");
+    }
+
+    #[test]
+    fn command_failure_summary_prefers_compiler_errors() {
+        let text = [
+            "CompileC very long command",
+            "/plugin/source/main.cpp:38:1: error: unknown type name 'Bool'",
+            "Bool PluginStart()",
+            "5 errors generated.",
+            "** BUILD FAILED **",
+            "The following build commands failed:",
+            "CompileC main.o",
+        ]
+        .join("\n");
+
+        let summary = command_failure_summary(&text);
+
+        assert!(summary.contains("unknown type name 'Bool'"));
+        assert!(summary.contains("** BUILD FAILED **"));
+    }
 
     #[test]
     fn legacy_workspace_copy_skips_vcs_and_cache_dirs() {

@@ -123,6 +123,22 @@ pub async fn open_artifact_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn save_build_log(path: String, contents: String) -> Result<(), String> {
+    run_compiler_task(move || {
+        let path = Path::new(&path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
+        }
+
+        std::fs::write(path, contents)
+            .map_err(|error| format!("Failed to write {}: {error}", path.display()))
+    })
+    .await
+}
+
 async fn run_compiler_task<T, F>(task: F) -> Result<T, String>
 where
     T: Send + 'static,

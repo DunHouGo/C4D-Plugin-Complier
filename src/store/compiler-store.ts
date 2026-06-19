@@ -8,7 +8,7 @@ export const defaultBuildRequest: BuildRequest = {
   plugin_root: '',
   module_name: '',
   package_name: '',
-  versions: [DEFAULT_SDK_START_VERSION, '2025', '2026'],
+  versions: [DEFAULT_SDK_START_VERSION],
   configuration: 'Release',
   sdk_source: 'ConfiguredThenInstalledThenOfficial',
   package_mode: 'Both',
@@ -28,6 +28,7 @@ interface CompilerState {
   updateRequest: (patch: Partial<BuildRequest>) => void
   updatePluginRoot: (pluginRoot: string) => void
   setSdkStartVersion: (version: string, availableVersions: string[]) => void
+  setBuildVersions: (versions: string[]) => void
 }
 
 export const useCompilerStore = create<CompilerState>()(
@@ -57,6 +58,18 @@ export const useCompilerStore = create<CompilerState>()(
           state => ({ request: { ...state.request, ...patch } }),
           undefined,
           'updateRequest'
+        ),
+
+      setBuildVersions: versions =>
+        set(
+          state => ({
+            request: {
+              ...state.request,
+              versions,
+            },
+          }),
+          undefined,
+          'setBuildVersions'
         ),
 
       updatePluginRoot: pluginRoot =>

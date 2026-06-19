@@ -2,6 +2,13 @@
 
 ## 2026-06-19
 
+- 修复未安装或未配置 2025 SDK 时仍默认触发 2025 构建的问题：构建版本现在只从本地已解析的 SDK root、SDK 压缩包或本机 `sdk.zip` 中自动生成，官方下载地址只作为可见来源，不再自动加入构建队列。
+- 修复损坏 SDK 压缩包被误识别为可构建来源的问题：无效 zip 现在会显示为 `invalid configured archive` 或 `invalid installed sdk.zip`，不会自动加入构建队列；官方下载缓存损坏时会先删除再重新下载。
+- 修复 2026 CMake SDK 构建带空格模块名时失败的问题，CMake target 会自动转换为无空格名称，并会清理旧模块别名链接，避免 `target_compile_definitions called with invalid arguments`。
+- 修复保存构建日志失败的问题，日志文件现在通过 Rust 后端写入，不再受前端 `fs.write_text_file` scope 限制。
+- 优化构建失败摘要，Xcode 或 Clang 失败时会优先显示真实 `error:` 附近上下文，不再只显示最后的构建命令摘要。
+- 优化 SDK 解析速度，列出和解析 SDK 时不再对官方下载地址执行网络 HEAD 探测，避免缺失版本在配置阶段长时间卡住。
+- 新增结构化构建日志系统：日志事件包含时间戳、等级和类别，日志面板支持颜色区分、等级筛选、类别筛选、自动滚动开关，并按当前筛选结果复制或另存为 `.log`。
 - 修复点击构建按钮无响应的问题：SDK 解析、环境检测和 SDK 配置命令现在会在 Tauri blocking task 中执行，避免 `reqwest::blocking` 在 async runtime 中触发 Tokio runtime shutdown panic。
 - 优化构建启动流程，SDK 解析失败时会立即恢复失败状态并写入构建日志，不再继续启动构建任务或让界面停留在运行中状态。
 - 修复 2024.4 legacy SDK 构建时复制插件目录失败的问题，工作区复制现在会跳过 `.git`、缓存、构建产物目录和 Unix socket 等特殊文件。

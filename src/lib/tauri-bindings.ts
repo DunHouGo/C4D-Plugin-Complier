@@ -94,16 +94,23 @@ export const commands = {
       string
     >,
   loadSdkSources: async () =>
-    (await generatedCommands.loadSdkSources()) as Result<SdkSourceConfig, string>,
+    (await generatedCommands.loadSdkSources()) as Result<
+      SdkSourceConfig,
+      string
+    >,
   saveSdkRootConfig: (config: SdkRootConfig) =>
     invokeResult<SdkSourceConfig>('save_sdk_root_config', { config }),
   autoConfigureSdkSources: () =>
     invokeResult<SdkAutoConfigReport>('auto_configure_sdk_sources'),
+  saveBuildLog: (path: string, contents: string) =>
+    invokeResult<null>('save_build_log', { path, contents }),
 }
 
 export interface BuildLogEvent {
   job_id: string
   level: string
+  category: string
+  timestamp: string
   message: string
 }
 

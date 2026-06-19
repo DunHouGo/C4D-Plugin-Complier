@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use serde_json::Value;
 use walkdir::WalkDir;
@@ -425,25 +424,47 @@ fn resolve_sdk_version(version: &str, refresh: bool) -> SdkResolution {
     }
 
     if let Some(archive_path) = find_configured_sdk_archive(&configured_root, version) {
+        if sdk_archive_is_readable(&archive_path) {
+            return SdkResolution {
+                version: version.to_string(),
+                source: SdkResolutionSource::Config,
+                sdk_root: None,
+                archive_path: Some(archive_path.display().to_string()),
+                download_url: generated_download_url_if_known(version),
+                status: "configured archive".to_string(),
+            };
+        }
+
         return SdkResolution {
             version: version.to_string(),
-            source: SdkResolutionSource::Config,
+            source: SdkResolutionSource::OfficialDownload,
             sdk_root: None,
-            archive_path: Some(archive_path.display().to_string()),
+            archive_path: None,
             download_url: generated_download_url_if_known(version),
-            status: "configured archive".to_string(),
+            status: format!("invalid configured archive: {}", archive_path.display()),
         };
     }
 
     let installed_zip = installed_sdk_zip_path(version);
     if installed_zip.is_file() {
+        if sdk_archive_is_readable(&installed_zip) {
+            return SdkResolution {
+                version: version.to_string(),
+                source: SdkResolutionSource::InstalledZip,
+                sdk_root: None,
+                archive_path: Some(installed_zip.display().to_string()),
+                download_url: generated_download_url_if_known(version),
+                status: "installed sdk.zip".to_string(),
+            };
+        }
+
         return SdkResolution {
             version: version.to_string(),
-            source: SdkResolutionSource::InstalledZip,
+            source: SdkResolutionSource::OfficialDownload,
             sdk_root: None,
-            archive_path: Some(installed_zip.display().to_string()),
+            archive_path: None,
             download_url: generated_download_url_if_known(version),
-            status: "installed sdk.zip".to_string(),
+            status: format!("invalid installed sdk.zip: {}", installed_zip.display()),
         };
     }
 
@@ -459,7 +480,7 @@ fn resolve_sdk_version(version: &str, refresh: bool) -> SdkResolution {
         };
     }
 
-    if let Some(url) = find_official_cpp_sdk_url(version) {
+    if let Some(url) = generated_download_url_if_known(version) {
         return SdkResolution {
             version: version.to_string(),
             source: SdkResolutionSource::OfficialDownload,
@@ -481,27 +502,7 @@ fn resolve_sdk_version(version: &str, refresh: bool) -> SdkResolution {
 }
 
 fn find_official_cpp_sdk_url(version: &str) -> Option<String> {
-    let candidates = sdk_download_candidates(version);
-    candidates
-        .iter()
-        .find(|url| remote_file_exists(url))
-        .cloned()
-        .or_else(|| candidates.first().cloned())
-}
-
-fn remote_file_exists(url: &str) -> bool {
-    let Ok(client) = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .build()
-    else {
-        return false;
-    };
-
-    client
-        .head(url)
-        .send()
-        .map(|response| response.status().is_success())
-        .unwrap_or(false)
+    sdk_download_candidates(version).first().cloned()
 }
 
 fn find_configured_sdk_root(configured_root: &Path, version: &str) -> Option<PathBuf> {
@@ -556,7 +557,16 @@ fn download_sdk(download_url: &str, version: &str) -> Result<PathBuf, String> {
     }
 
     if archive_path.is_file() {
-        return Ok(archive_path);
+        if sdk_archive_is_readable(&archive_path) {
+            return Ok(archive_path);
+        }
+
+        std::fs::remove_file(&archive_path).map_err(|error| {
+            format!(
+                "Failed to remove invalid SDK archive {}: {error}",
+                archive_path.display()
+            )
+        })?;
     }
 
     let mut response = reqwest::blocking::get(download_url)
@@ -574,6 +584,13 @@ fn download_sdk(download_url: &str, version: &str) -> Result<PathBuf, String> {
         .copy_to(&mut file)
         .map_err(|error| format!("Failed to write {}: {error}", archive_path.display()))?;
     Ok(archive_path)
+}
+
+fn sdk_archive_is_readable(path: &Path) -> bool {
+    File::open(path)
+        .ok()
+        .and_then(|file| ZipArchive::new(file).ok())
+        .is_some()
 }
 
 fn extract_sdk_archive(
@@ -752,17 +769,33 @@ fn sdk_version_option(version: &str, config: &SdkSourceConfig) -> SdkVersionOpti
             "configured root".to_string(),
         )
     } else if let Some(archive_path) = resolved_archive {
-        (
-            None,
-            Some(archive_path.display().to_string()),
-            "configured archive".to_string(),
-        )
+        if !sdk_archive_is_readable(&archive_path) {
+            (
+                None,
+                None,
+                format!("invalid configured archive: {}", archive_path.display()),
+            )
+        } else {
+            (
+                None,
+                Some(archive_path.display().to_string()),
+                "configured archive".to_string(),
+            )
+        }
     } else if installed_zip.is_file() {
-        (
-            None,
-            Some(installed_zip.display().to_string()),
-            "installed sdk.zip".to_string(),
-        )
+        if !sdk_archive_is_readable(&installed_zip) {
+            (
+                None,
+                None,
+                format!("invalid installed sdk.zip: {}", installed_zip.display()),
+            )
+        } else {
+            (
+                None,
+                Some(installed_zip.display().to_string()),
+                "installed sdk.zip".to_string(),
+            )
+        }
     } else if is_cmake_sdk_root(&cached_root) || is_legacy_sdk_root(&cached_root) {
         (
             Some(cached_root.display().to_string()),
@@ -935,7 +968,7 @@ mod tests {
 
     use super::{
         find_configured_sdk_archive, find_configured_sdk_root, path_matches_sdk_version,
-        sdk_version_match_tokens,
+        sdk_version_match_tokens, sdk_version_option, SdkSourceConfig,
     };
 
     #[test]
@@ -992,6 +1025,27 @@ mod tests {
             find_configured_sdk_archive(root.path(), "2024.4").as_deref(),
             Some(archive.as_path())
         );
+    }
+
+    #[test]
+    fn invalid_configured_archive_is_not_buildable() {
+        let root = TempTree::new("c4d-sdk-invalid-archive");
+        let archive = root
+            .path()
+            .join("downloads")
+            .join("Cinema_4D_CPP_SDK_2025_0_1.zip");
+        std::fs::create_dir_all(archive.parent().expect("archive parent")).unwrap();
+        std::fs::write(&archive, "not a zip").unwrap();
+
+        let option = sdk_version_option(
+            "2025",
+            &SdkSourceConfig {
+                sdk_root: Some(root.path().display().to_string()),
+            },
+        );
+
+        assert!(option.status.starts_with("invalid configured archive:"));
+        assert_eq!(option.sdk_zip, None);
     }
 
     #[test]

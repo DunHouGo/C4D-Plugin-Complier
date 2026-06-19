@@ -172,6 +172,8 @@ pub struct BuildArtifact {
 pub struct BuildLogEvent {
     pub job_id: String,
     pub level: String,
+    pub category: String,
+    pub timestamp: String,
     pub message: String,
 }
 

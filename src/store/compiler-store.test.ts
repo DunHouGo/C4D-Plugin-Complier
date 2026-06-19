@@ -58,4 +58,15 @@ describe('CompilerStore', () => {
 
     expect(useCompilerStore.getState().artifacts).toEqual([])
   })
+
+  it('uses the configured buildable versions from the selected start version', () => {
+    const { setSdkStartVersion } = useCompilerStore.getState()
+
+    setSdkStartVersion(DEFAULT_SDK_START_VERSION, ['2024.4', '2026'])
+
+    expect(useCompilerStore.getState().request.versions).toEqual([
+      '2024.4',
+      '2026',
+    ])
+  })
 })

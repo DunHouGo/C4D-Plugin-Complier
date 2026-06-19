@@ -23,6 +23,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         compiler::cancel_build,
         compiler::list_artifacts,
         compiler::open_artifact_folder,
+        compiler::save_build_log,
     ])
 }
 

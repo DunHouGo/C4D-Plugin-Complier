@@ -153,6 +153,7 @@ vi.mock('@/lib/tauri-bindings', () => ({
     cancelBuild: vi.fn().mockResolvedValue({ status: 'ok', data: true }),
     listArtifacts: vi.fn().mockResolvedValue({ status: 'ok', data: [] }),
     openArtifactFolder: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
+    saveBuildLog: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
   },
   unwrapResult: vi.fn((result: { status: string; data?: unknown }) => {
     if (result.status === 'ok') return result.data

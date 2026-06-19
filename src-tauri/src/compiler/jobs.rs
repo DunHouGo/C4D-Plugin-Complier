@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{AppHandle, Emitter};
 
-use crate::compiler::build::execute_build;
+use crate::compiler::build::{build_log_timestamp, execute_build};
 use crate::types::{
     BuildArtifact, BuildFinishedEvent, BuildJobId, BuildLogEvent, BuildProgressEvent, BuildRequest,
 };
@@ -71,6 +71,8 @@ impl JobManager {
                         BuildLogEvent {
                             job_id: log_job_id,
                             level: "error".to_string(),
+                            category: "system".to_string(),
+                            timestamp: build_log_timestamp(),
                             message: error.clone(),
                         },
                     );

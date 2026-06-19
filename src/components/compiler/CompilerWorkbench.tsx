@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { save as saveDialog } from '@tauri-apps/plugin-dialog'
-import { writeTextFile } from '@tauri-apps/plugin-fs'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useTranslation } from 'react-i18next'
 import {
@@ -9,6 +8,7 @@ import {
   CheckCircle2,
   Copy,
   Hammer,
+  ListFilter,
   Play,
   RefreshCw,
   Save,
@@ -28,6 +28,8 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Switch } from '@/components/ui/switch'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { cn } from '@/lib/utils'
 import { useCompilerStore } from '@/store/compiler-store'
 import { HelpHint } from './HelpHint'
@@ -46,6 +48,27 @@ import {
 } from '@/lib/tauri-bindings'
 
 type BuildState = 'idle' | 'running' | 'success' | 'failed'
+type LogFilter = 'all' | 'warn' | 'error'
+type LogCategoryFilter =
+  | 'all'
+  | 'build'
+  | 'sdk'
+  | 'cmake'
+  | 'xcode'
+  | 'toolchain'
+  | 'package'
+  | 'system'
+  | 'command'
+
+const LOG_CATEGORY_FILTERS: LogCategoryFilter[] = [
+  'all',
+  'sdk',
+  'cmake',
+  'xcode',
+  'toolchain',
+  'package',
+  'system',
+]
 
 export function CompilerWorkbench() {
   const { t } = useTranslation()
@@ -56,10 +79,15 @@ export function CompilerWorkbench() {
   const addArtifact = useCompilerStore(state => state.addArtifact)
   const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
   const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
+  const setBuildVersions = useCompilerStore(state => state.setBuildVersions)
   const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
   const [sdkResolutions, setSdkResolutions] = useState<SdkResolution[]>([])
   const [sdkVersions, setSdkVersions] = useState<SdkVersionOption[]>([])
   const [logs, setLogs] = useState<BuildLogEvent[]>([])
+  const [logFilter, setLogFilter] = useState<LogFilter>('all')
+  const [logCategoryFilter, setLogCategoryFilter] =
+    useState<LogCategoryFilter>('all')
+  const [autoScrollLogs, setAutoScrollLogs] = useState(true)
   const [logActionMessage, setLogActionMessage] = useState<string | null>(null)
   const [progress, setProgress] = useState<BuildProgressEvent | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
@@ -74,10 +102,28 @@ export function CompilerWorkbench() {
         ?.message.trim(),
     [logs]
   )
-  const buildLogText = useMemo(() => formatBuildLog(logs), [logs])
+  const filteredLogs = useMemo(
+    () =>
+      logs.filter(
+        item =>
+          matchesLogLevelFilter(item, logFilter) &&
+          matchesLogCategoryFilter(item, logCategoryFilter)
+      ),
+    [logCategoryFilter, logFilter, logs]
+  )
+  const filteredBuildLogText = useMemo(
+    () => formatBuildLog(filteredLogs),
+    [filteredLogs]
+  )
+  const logEndRef = useRef<HTMLDivElement>(null)
 
   const versionNames = useMemo(
     () => sdkVersions.map(version => version.version),
+    [sdkVersions]
+  )
+  const buildableVersionNames = useMemo(
+    () =>
+      sdkVersions.filter(isBuildableSdkVersion).map(version => version.version),
     [sdkVersions]
   )
 
@@ -86,15 +132,18 @@ export function CompilerWorkbench() {
   }, [sdkStartVersion])
 
   useEffect(() => {
+    if (!autoScrollLogs) return
+    if (typeof logEndRef.current?.scrollIntoView !== 'function') return
+    logEndRef.current.scrollIntoView({ block: 'end' })
+  }, [autoScrollLogs, filteredLogs.length])
+
+  useEffect(() => {
     async function loadInitialEnvironment() {
       const result = await commands.detectEnvironment()
       if (result.status === 'ok') {
         setEnvironment(result.data)
       } else {
-        setLogs(current => [
-          ...current,
-          { job_id: 'system', level: 'error', message: result.error },
-        ])
+        setLogs(current => [...current, systemLog('error', result.error)])
       }
     }
 
@@ -102,23 +151,14 @@ export function CompilerWorkbench() {
       const result = await commands.listSdkVersions()
       if (result.status === 'ok') {
         setSdkVersions(result.data)
-        const nextVersion = result.data[0]?.version
-        if (
-          nextVersion &&
-          !result.data.some(
-            version => version.version === sdkStartVersionRef.current
-          )
-        ) {
-          setSdkStartVersion(
-            nextVersion,
-            result.data.map(version => version.version)
-          )
-        }
+        syncBuildVersionsFromSdkOptions(
+          result.data,
+          sdkStartVersionRef.current,
+          setSdkStartVersion,
+          setBuildVersions
+        )
       } else {
-        setLogs(current => [
-          ...current,
-          { job_id: 'system', level: 'error', message: result.error },
-        ])
+        setLogs(current => [...current, systemLog('error', result.error)])
       }
     }
 
@@ -142,6 +182,8 @@ export function CompilerWorkbench() {
           {
             job_id: event.payload.job_id,
             level: event.payload.success ? 'info' : 'error',
+            category: 'system',
+            timestamp: String(Date.now()),
             message: event.payload.message,
           },
         ])
@@ -151,29 +193,20 @@ export function CompilerWorkbench() {
     return () => {
       void unlisten.then(items => items.forEach(item => item()))
     }
-  }, [addArtifact, setSdkStartVersion])
+  }, [addArtifact, setBuildVersions, setSdkStartVersion])
 
   async function refreshSdkVersions() {
     const result = await commands.listSdkVersions()
     if (result.status === 'ok') {
       setSdkVersions(result.data)
-      const nextVersion = result.data[0]?.version
-      if (
-        nextVersion &&
-        !result.data.some(
-          version => version.version === sdkStartVersionRef.current
-        )
-      ) {
-        setSdkStartVersion(
-          nextVersion,
-          result.data.map(version => version.version)
-        )
-      }
+      syncBuildVersionsFromSdkOptions(
+        result.data,
+        sdkStartVersionRef.current,
+        setSdkStartVersion,
+        setBuildVersions
+      )
     } else {
-      setLogs(current => [
-        ...current,
-        { job_id: 'system', level: 'error', message: result.error },
-      ])
+      setLogs(current => [...current, systemLog('error', result.error)])
     }
   }
 
@@ -182,10 +215,7 @@ export function CompilerWorkbench() {
     if (result.status === 'ok') {
       setEnvironment(result.data)
     } else {
-      setLogs(current => [
-        ...current,
-        { job_id: 'system', level: 'error', message: result.error },
-      ])
+      setLogs(current => [...current, systemLog('error', result.error)])
     }
   }
 
@@ -196,10 +226,7 @@ export function CompilerWorkbench() {
       return true
     }
 
-    setLogs(current => [
-      ...current,
-      { job_id: 'system', level: 'error', message: result.error },
-    ])
+    setLogs(current => [...current, systemLog('error', result.error)])
     return false
   }
 
@@ -219,7 +246,7 @@ export function CompilerWorkbench() {
       setJobId(result.data.id)
     } else {
       setState('failed')
-      setLogs([{ job_id: 'system', level: 'error', message: result.error }])
+      setLogs([systemLog('error', result.error)])
     }
   }
 
@@ -230,9 +257,9 @@ export function CompilerWorkbench() {
   }
 
   async function copyBuildLog() {
-    if (!buildLogText) return
+    if (!filteredBuildLogText) return
     try {
-      await writeText(buildLogText)
+      await writeText(filteredBuildLogText)
       setLogActionMessage(t('compiler.logs.copied'))
     } catch (error) {
       setLogActionMessage(t('compiler.logs.copyFailed', { message: error }))
@@ -240,14 +267,17 @@ export function CompilerWorkbench() {
   }
 
   async function saveBuildLog() {
-    if (!buildLogText) return
+    if (!filteredBuildLogText) return
     try {
       const path = await saveDialog({
         defaultPath: `c4d-build-${new Date().toISOString().replace(/[:.]/g, '-')}.log`,
         filters: [{ name: 'Log', extensions: ['log', 'txt'] }],
       })
       if (!path) return
-      await writeTextFile(path, buildLogText)
+      const result = await commands.saveBuildLog(path, filteredBuildLogText)
+      if (result.status === 'error') {
+        throw result.error
+      }
       setLogActionMessage(t('compiler.logs.saved'))
     } catch (error) {
       setLogActionMessage(t('compiler.logs.saveFailed', { message: error }))
@@ -308,14 +338,28 @@ export function CompilerWorkbench() {
             >
               <Select
                 value={sdkStartVersion}
-                onValueChange={value => setSdkStartVersion(value, versionNames)}
+                onValueChange={value =>
+                  setSdkStartVersion(
+                    value,
+                    buildableVersionNames.length > 0
+                      ? buildableVersionNames
+                      : versionNames
+                  )
+                }
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {sdkVersions.map(version => (
-                    <SelectItem key={version.version} value={version.version}>
+                    <SelectItem
+                      key={version.version}
+                      value={version.version}
+                      disabled={
+                        buildableVersionNames.length > 0 &&
+                        !buildableVersionNames.includes(version.version)
+                      }
+                    >
                       {version.label}
                     </SelectItem>
                   ))}
@@ -542,21 +586,72 @@ export function CompilerWorkbench() {
 
         <div className="grid min-h-0 flex-1 overflow-hidden">
           <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-            <div className="flex h-10 items-center justify-between gap-2 border-b px-4 text-sm font-medium">
-              <div className="flex min-w-0 items-center gap-2">
-                <span>{t('compiler.panels.buildLog')}</span>
+            <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm font-medium">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="shrink-0">
+                  {t('compiler.panels.buildLog')}
+                </span>
+                <Badge variant="outline" className="font-normal">
+                  {filteredLogs.length}/{logs.length}
+                </Badge>
                 {logActionMessage ? (
                   <span className="truncate text-xs font-normal text-muted-foreground">
                     {logActionMessage}
                   </span>
                 ) : null}
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                <ToggleGroup
+                  type="single"
+                  value={logFilter}
+                  variant="outline"
+                  size="sm"
+                  onValueChange={value => {
+                    if (value) setLogFilter(value as LogFilter)
+                  }}
+                >
+                  <ToggleGroupItem value="all" className="h-7 px-2">
+                    {t('compiler.logs.filter.all')}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="warn" className="h-7 px-2">
+                    {t('compiler.logs.filter.warn')}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="error" className="h-7 px-2">
+                    {t('compiler.logs.filter.error')}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                <div className="flex items-center gap-1">
+                  <ListFilter className="size-3.5 text-muted-foreground" />
+                  <Select
+                    value={logCategoryFilter}
+                    onValueChange={value =>
+                      setLogCategoryFilter(value as LogCategoryFilter)
+                    }
+                  >
+                    <SelectTrigger className="h-7 w-[118px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOG_CATEGORY_FILTERS.map(category => (
+                        <SelectItem key={category} value={category}>
+                          {t(`compiler.logs.category.${category}`)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+                  <Switch
+                    checked={autoScrollLogs}
+                    onCheckedChange={setAutoScrollLogs}
+                  />
+                  <span>{t('compiler.logs.autoScroll')}</span>
+                </label>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="size-7"
-                  disabled={!buildLogText}
+                  disabled={!filteredBuildLogText}
                   title={t('compiler.actions.copyLog')}
                   onClick={() => void copyBuildLog()}
                 >
@@ -566,7 +661,7 @@ export function CompilerWorkbench() {
                   variant="ghost"
                   size="icon"
                   className="size-7"
-                  disabled={!buildLogText}
+                  disabled={!filteredBuildLogText}
                   title={t('compiler.actions.saveLog')}
                   onClick={() => void saveBuildLog()}
                 >
@@ -580,23 +675,16 @@ export function CompilerWorkbench() {
                   <div className="text-muted-foreground">
                     {t('compiler.empty.noLogs')}
                   </div>
+                ) : filteredLogs.length === 0 ? (
+                  <div className="text-muted-foreground">
+                    {t('compiler.empty.noFilteredLogs')}
+                  </div>
                 ) : (
-                  logs.map((item, index) => (
-                    <div
-                      key={`${item.job_id}-${index}`}
-                      className={cn(
-                        'whitespace-pre-wrap break-words rounded px-2 py-1',
-                        item.level === 'error' && 'bg-destructive/10',
-                        item.level === 'warn' && 'bg-amber-500/10'
-                      )}
-                    >
-                      <span className="mr-2 text-muted-foreground">
-                        {item.level}
-                      </span>
-                      {item.message}
-                    </div>
+                  filteredLogs.map((item, index) => (
+                    <LogRow key={`${item.job_id}-${index}`} item={item} />
                   ))
                 )}
+                <div ref={logEndRef} />
               </div>
             </ScrollArea>
           </section>
@@ -607,11 +695,122 @@ export function CompilerWorkbench() {
 }
 
 function isResolvedSdk(item: SdkResolution) {
-  return Boolean(item.sdk_root || item.archive_path || item.download_url)
+  return Boolean(item.sdk_root || item.archive_path)
 }
 
 function formatBuildLog(logs: BuildLogEvent[]) {
-  return logs.map(item => `[${item.level}] ${item.message}`).join('\n')
+  return logs
+    .map(
+      item =>
+        `${formatLogTimestamp(item.timestamp)} [${item.level}] [${item.category}] ${item.message}`
+    )
+    .join('\n')
+}
+
+function isBuildableSdkVersion(item: SdkVersionOption) {
+  if (item.status.startsWith('invalid ')) return false
+  return Boolean(item.sdk_root || item.sdk_zip)
+}
+
+function syncBuildVersionsFromSdkOptions(
+  options: SdkVersionOption[],
+  currentStart: string,
+  setSdkStartVersion: (version: string, availableVersions: string[]) => void,
+  setBuildVersions: (versions: string[]) => void
+) {
+  const availableVersions = options.map(version => version.version)
+  const buildableVersions = options
+    .filter(isBuildableSdkVersion)
+    .map(version => version.version)
+  const fallbackVersion = buildableVersions[0] ?? availableVersions[0]
+  if (!fallbackVersion) return
+
+  const startVersion = buildableVersions.includes(currentStart)
+    ? currentStart
+    : fallbackVersion
+  const startIndex = buildableVersions.indexOf(startVersion)
+  const nextVersions =
+    startIndex >= 0
+      ? buildableVersions.slice(startIndex)
+      : [startVersion].filter(version => buildableVersions.includes(version))
+
+  if (
+    startVersion !== currentStart ||
+    !availableVersions.includes(currentStart)
+  ) {
+    setSdkStartVersion(startVersion, buildableVersions)
+  }
+  setBuildVersions(nextVersions.length > 0 ? nextVersions : [fallbackVersion])
+}
+
+function matchesLogLevelFilter(item: BuildLogEvent, filter: LogFilter) {
+  if (filter === 'all') return true
+  if (filter === 'warn') return item.level === 'warn' || item.level === 'error'
+  return item.level === 'error'
+}
+
+function matchesLogCategoryFilter(
+  item: BuildLogEvent,
+  filter: LogCategoryFilter
+) {
+  return filter === 'all' || item.category === filter
+}
+
+function systemLog(level: 'info' | 'warn' | 'error', message: string) {
+  return {
+    job_id: 'system',
+    level,
+    category: 'system',
+    timestamp: String(Date.now()),
+    message,
+  }
+}
+
+function formatLogTimestamp(timestamp: string) {
+  const date = new Date(Number(timestamp))
+  if (Number.isNaN(date.getTime())) return timestamp
+
+  return date.toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3,
+    hour12: false,
+  })
+}
+
+function LogRow({ item }: { item: BuildLogEvent }) {
+  return (
+    <div
+      className={cn(
+        'grid grid-cols-[88px_54px_82px_minmax(0,1fr)] gap-2 rounded border px-2 py-1.5 leading-relaxed',
+        item.level === 'error' &&
+          'border-destructive/20 bg-destructive/10 text-destructive',
+        item.level === 'warn' && 'border-amber-500/20 bg-amber-500/10',
+        item.level !== 'error' &&
+          item.level !== 'warn' &&
+          'border-transparent bg-muted/20'
+      )}
+    >
+      <span className="text-muted-foreground">
+        {formatLogTimestamp(item.timestamp)}
+      </span>
+      <span
+        className={cn(
+          'font-semibold uppercase',
+          item.level === 'error' && 'text-destructive',
+          item.level === 'warn' && 'text-amber-600',
+          item.level === 'info' && 'text-emerald-600'
+        )}
+      >
+        {item.level}
+      </span>
+      <span className="truncate text-muted-foreground">{item.category}</span>
+      <span className="whitespace-pre-wrap break-words text-foreground">
+        {item.message}
+      </span>
+    </div>
+  )
 }
 
 function Field({
