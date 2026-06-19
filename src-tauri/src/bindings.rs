@@ -17,6 +17,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         compiler::load_sdk_sources,
         compiler::save_sdk_root_config,
         compiler::auto_configure_sdk_sources,
+        compiler::inspect_sdk_setup,
+        compiler::configure_required_sdks,
         compiler::save_sdk_source,
         compiler::remove_sdk_source,
         compiler::start_build,

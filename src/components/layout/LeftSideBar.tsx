@@ -1,5 +1,16 @@
 import { cn } from '@/lib/utils'
-import { SdkConfigPanel } from '@/components/compiler/SdkConfigPanel'
+import { Button } from '@/components/ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { FolderCog, Settings } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { useUIStore } from '@/store/ui-store'
 
 interface LeftSideBarProps {
   children?: React.ReactNode
@@ -14,7 +25,30 @@ export function LeftSideBar({ children, className }: LeftSideBarProps) {
         className
       )}
     >
-      {children ?? <SdkConfigPanel />}
+      {children ?? <SdkSettingsShortcut />}
     </div>
+  )
+}
+
+function SdkSettingsShortcut() {
+  const { t } = useTranslation()
+  const setPreferencesOpen = useUIStore(state => state.setPreferencesOpen)
+
+  return (
+    <Empty className="h-full rounded-none border-0">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <FolderCog className="size-5" />
+        </EmptyMedia>
+        <EmptyTitle>{t('sdk.sidebar.title')}</EmptyTitle>
+        <EmptyDescription>{t('sdk.sidebar.description')}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button onClick={() => setPreferencesOpen(true)}>
+          <Settings className="size-4" />
+          {t('sdk.sidebar.openSettings')}
+        </Button>
+      </EmptyContent>
+    </Empty>
   )
 }

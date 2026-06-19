@@ -12,6 +12,7 @@ interface PathPickerProps {
   title: string
   directory?: boolean
   filters?: { name: string; extensions: string[] }[]
+  size?: 'default' | 'sm'
   onChange: (value: string) => void
 }
 
@@ -21,6 +22,7 @@ export function PathPicker({
   title,
   directory = true,
   filters,
+  size = 'default',
   onChange,
 }: PathPickerProps) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -85,7 +87,7 @@ export function PathPicker({
       )}
     >
       <Input
-        className="rounded-r-none"
+        className={cn('rounded-r-none', size === 'sm' && 'h-8 text-sm')}
         value={value}
         placeholder={placeholder}
         onChange={event => onChange(event.target.value)}
@@ -94,7 +96,7 @@ export function PathPicker({
         <Button
           type="button"
           variant="outline"
-          size="icon"
+          size={size === 'sm' ? 'icon-sm' : 'icon'}
           className="rounded-none border-l-0"
           onClick={() => onChange('')}
           title="Clear path"
@@ -105,7 +107,7 @@ export function PathPicker({
       <Button
         type="button"
         variant="outline"
-        size="icon"
+        size={size === 'sm' ? 'icon-sm' : 'icon'}
         className="rounded-l-none border-l-0"
         onClick={() => void choosePath()}
         title={title}

@@ -60,6 +60,9 @@ vi.mock('@/lib/tauri-bindings', () => ({
       data: {
         os: 'windows',
         supported: true,
+        compiler_platform: 'Windows',
+        cmake_preset: 'windows_x86_64',
+        binary_extension: 'xdl64',
         cmake: {
           found: true,
           path: 'C:\\Program Files\\CMake\\bin\\cmake.exe',
@@ -131,6 +134,28 @@ vi.mock('@/lib/tauri-bindings', () => ({
         sdk_root: 'C:\\Users\\test\\Documents\\Maxon_SDK',
         installed_versions: [],
         versions: [],
+      },
+    }),
+    inspectSdkSetup: vi.fn().mockResolvedValue({
+      status: 'ok',
+      data: {
+        sdk_root: 'C:\\Users\\test\\Documents\\Maxon_SDK',
+        installed_versions: [],
+        versions: [],
+        prepared_versions: [],
+        requirements: [],
+        summary: 'Ready for Cinema 4D C++ SDK builds',
+      },
+    }),
+    configureRequiredSdks: vi.fn().mockResolvedValue({
+      status: 'ok',
+      data: {
+        sdk_root: 'C:\\Users\\test\\Documents\\Maxon_SDK',
+        installed_versions: [],
+        versions: [],
+        prepared_versions: [],
+        requirements: [],
+        summary: 'Ready for Cinema 4D C++ SDK builds',
       },
     }),
     saveSdkSource: vi.fn().mockResolvedValue({

@@ -7,7 +7,9 @@ import App from './App'
 describe('App', () => {
   it('renders main window layout', () => {
     render(<App />)
-    expect(screen.getByText(/C4D Plugin Compiler/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/C4D Plugin Compiler/i).length).toBeGreaterThan(
+      0
+    )
   })
 
   it('renders title bar with traffic light buttons', () => {

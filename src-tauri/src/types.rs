@@ -216,6 +216,36 @@ pub struct SdkAutoConfigReport {
     pub versions: Vec<SdkVersionOption>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub enum SetupRequirementStatus {
+    Ready,
+    Warning,
+    Missing,
+    Manual,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SetupRequirement {
+    pub key: String,
+    pub label: String,
+    pub status: SetupRequirementStatus,
+    pub detail: String,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub auto_installable: bool,
+    pub install_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SdkSetupReport {
+    pub sdk_root: Option<String>,
+    pub installed_versions: Vec<InstalledC4dVersion>,
+    pub versions: Vec<SdkVersionOption>,
+    pub prepared_versions: Vec<SdkResolution>,
+    pub requirements: Vec<SetupRequirement>,
+    pub summary: String,
+}
+
 impl Default for AppPreferences {
     fn default() -> Self {
         Self {

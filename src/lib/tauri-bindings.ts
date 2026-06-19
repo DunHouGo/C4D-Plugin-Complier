@@ -26,6 +26,7 @@ import {
   commands as generatedCommands,
   type Result,
   type EnvironmentReport as GeneratedEnvironmentReport,
+  type SdkSetupReport as GeneratedSdkSetupReport,
   type SdkVersionOption,
 } from './bindings'
 
@@ -41,9 +42,12 @@ export type {
   RecoveryError,
   SdkResolution,
   SdkResolutionSource,
+  SdkSetupReport,
   SdkSourceMode,
   SdkSourceOverride,
   SdkVersionOption,
+  SetupRequirement,
+  SetupRequirementStatus,
   ToolStatus,
 } from './bindings'
 
@@ -102,6 +106,13 @@ export const commands = {
     invokeResult<SdkSourceConfig>('save_sdk_root_config', { config }),
   autoConfigureSdkSources: () =>
     invokeResult<SdkAutoConfigReport>('auto_configure_sdk_sources'),
+  inspectSdkSetup: () =>
+    invokeResult<GeneratedSdkSetupReport>('inspect_sdk_setup'),
+  configureRequiredSdks: (config: SdkRootConfig, refresh: boolean) =>
+    invokeResult<GeneratedSdkSetupReport>('configure_required_sdks', {
+      config,
+      refresh,
+    }),
   saveBuildLog: (path: string, contents: string) =>
     invokeResult<null>('save_build_log', { path, contents }),
 }

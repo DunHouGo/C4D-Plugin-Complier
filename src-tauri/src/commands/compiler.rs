@@ -9,7 +9,7 @@ use crate::compiler::jobs::JobManager;
 use crate::compiler::sdk;
 use crate::types::{
     BuildArtifact, BuildJobId, BuildRequest, EnvironmentReport, SdkAutoConfigReport, SdkResolution,
-    SdkRootConfig, SdkSourceConfig, SdkSourceOverride, SdkVersionOption,
+    SdkRootConfig, SdkSetupReport, SdkSourceConfig, SdkSourceOverride, SdkVersionOption,
 };
 
 #[tauri::command]
@@ -46,6 +46,21 @@ pub async fn save_sdk_root_config(config: SdkRootConfig) -> Result<SdkSourceConf
 #[specta::specta]
 pub async fn auto_configure_sdk_sources() -> Result<SdkAutoConfigReport, String> {
     run_compiler_task(sdk::auto_configure_sdk_sources).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn inspect_sdk_setup() -> Result<SdkSetupReport, String> {
+    run_compiler_task(sdk::inspect_sdk_setup).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn configure_required_sdks(
+    config: SdkRootConfig,
+    refresh: bool,
+) -> Result<SdkSetupReport, String> {
+    run_compiler_task(move || sdk::configure_required_sdks(config, refresh)).await
 }
 
 #[tauri::command]

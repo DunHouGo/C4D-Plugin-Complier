@@ -11,7 +11,7 @@ use zip::ZipArchive;
 use crate::compiler::{parse_version_list, require_file};
 use crate::types::{
     BuildRequest, InstalledC4dVersion, SdkAutoConfigReport, SdkResolution, SdkResolutionSource,
-    SdkRootConfig, SdkSourceConfig, SdkSourceOverride, SdkVersionOption,
+    SdkRootConfig, SdkSetupReport, SdkSourceConfig, SdkSourceOverride, SdkVersionOption,
 };
 
 const MAXON_BASE_URL: &str = "https://developers.maxon.net";
@@ -82,6 +82,27 @@ pub fn auto_configure_sdk_sources() -> Result<SdkAutoConfigReport, String> {
         installed_versions,
         versions,
     })
+}
+
+pub fn inspect_sdk_setup() -> Result<SdkSetupReport, String> {
+    let config = load_sdk_source_config()?;
+    Ok(sdk_setup_report(config.sdk_root, Vec::new()))
+}
+
+pub fn configure_required_sdks(
+    config: SdkRootConfig,
+    refresh: bool,
+) -> Result<SdkSetupReport, String> {
+    let config = save_sdk_root_config(config)?;
+    let installed_versions = detect_installed_c4d_versions();
+    let target_versions = required_sdk_versions(&installed_versions);
+    let mut prepared_versions = Vec::new();
+
+    for version in target_versions {
+        prepared_versions.push(prepare_sdk(&version, refresh)?);
+    }
+
+    Ok(sdk_setup_report(config.sdk_root, prepared_versions))
 }
 
 pub fn save_sdk_source(
@@ -822,6 +843,61 @@ fn sdk_version_option(version: &str, config: &SdkSourceConfig) -> SdkVersionOpti
         download_url,
         status,
     }
+}
+
+fn sdk_setup_report(
+    sdk_root: Option<String>,
+    prepared_versions: Vec<SdkResolution>,
+) -> SdkSetupReport {
+    let installed_versions = detect_installed_c4d_versions();
+    let versions = available_sdk_versions();
+    let requirements = crate::compiler::env::setup_requirements(
+        &installed_versions,
+        &versions,
+        sdk_root.as_deref(),
+    );
+    let missing_count = requirements
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.status,
+                crate::types::SetupRequirementStatus::Missing
+                    | crate::types::SetupRequirementStatus::Manual
+            )
+        })
+        .count();
+    let summary = if missing_count == 0 {
+        "Ready for Cinema 4D C++ SDK builds".to_string()
+    } else {
+        format!("{missing_count} setup items need attention")
+    };
+
+    SdkSetupReport {
+        sdk_root,
+        installed_versions,
+        versions,
+        prepared_versions,
+        requirements,
+        summary,
+    }
+}
+
+fn required_sdk_versions(installed_versions: &[InstalledC4dVersion]) -> Vec<String> {
+    let mut versions = BTreeSet::new();
+    if installed_versions.is_empty() {
+        versions.insert(DEFAULT_MIN_SDK_VERSION.to_string());
+    } else {
+        versions.extend(
+            installed_versions
+                .iter()
+                .map(|item| item.sdk_version.clone())
+                .filter(|version| {
+                    version_sort_key(version) >= version_sort_key(DEFAULT_MIN_SDK_VERSION)
+                }),
+        );
+    }
+
+    versions.into_iter().collect()
 }
 
 fn sdk_download_candidates(version: &str) -> Vec<String> {

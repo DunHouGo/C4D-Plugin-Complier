@@ -236,6 +236,8 @@ vi.mock('@/lib/tauri-bindings', () => ({
 | `loadSdkSources`          | none                                         | `Result<SdkSourceConfig, string>`    | Load SDK source configuration                 |
 | `saveSdkSource`           | `version: string, source: SdkSourceOverride` | `Result<SdkVersionOption, string>`   | Save SDK root, zip, or URL for a version      |
 | `removeSdkSource`         | `version: string`                            | `Result<SdkVersionOption[], string>` | Remove custom SDK source for a version        |
+| `inspectSdkSetup`         | none                                         | `Result<SdkSetupReport, string>`     | Inspect C4D installs, SDK sources, and tools  |
+| `configureRequiredSdks`   | `config: SdkRootConfig, refresh: boolean`    | `Result<SdkSetupReport, string>`     | Download/extract required Maxon SDKs          |
 | `startBuild`              | `request: BuildRequest`                      | `Result<BuildJobId, string>`         | Start compiler job                            |
 | `cancelBuild`             | `jobId: string`                              | `Result<boolean, string>`            | Cancel compiler job                           |
 | `listArtifacts`           | `jobId: string`                              | `Result<BuildArtifact[], string>`    | List build artifacts                          |

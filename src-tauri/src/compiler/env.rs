@@ -5,7 +5,10 @@ use std::process::Command;
 
 use crate::compiler::sdk;
 use crate::compiler::{current_build_platform, local_data_root};
-use crate::types::{EnvironmentReport, InstalledSdkZip, ToolStatus};
+use crate::types::{
+    CompilerPlatform, EnvironmentReport, InstalledC4dVersion, InstalledSdkZip, SdkVersionOption,
+    SetupRequirement, SetupRequirementStatus, ToolStatus,
+};
 
 pub fn detect_environment() -> EnvironmentReport {
     let build_platform = current_build_platform();
@@ -37,6 +40,260 @@ pub fn detect_environment() -> EnvironmentReport {
         installed_sdk_zips,
         installed_c4d_versions,
         cache_root,
+    }
+}
+
+pub fn setup_requirements(
+    installed_c4d_versions: &[InstalledC4dVersion],
+    sdk_versions: &[SdkVersionOption],
+    sdk_root: Option<&str>,
+) -> Vec<SetupRequirement> {
+    let report = detect_environment();
+    let mut requirements = Vec::new();
+
+    requirements.push(c4d_requirement(installed_c4d_versions));
+    requirements.push(sdk_root_requirement(sdk_root));
+    requirements.extend(sdk_version_requirements(
+        installed_c4d_versions,
+        sdk_versions,
+    ));
+    requirements.push(tool_requirement(
+        "cmake",
+        "CMake 3.30+",
+        &report.cmake,
+        true,
+        cmake_install_hint(),
+    ));
+    requirements.push(tool_requirement(
+        "python",
+        "Python",
+        &report.python,
+        false,
+        Some("Install Python 3.10+ and ensure it is available in PATH.".to_string()),
+    ));
+
+    match std::env::consts::OS {
+        "macos" => {
+            requirements.push(tool_requirement(
+                "xcode",
+                "Xcode 16+",
+                &report.xcode,
+                false,
+                Some(
+                    "Install Xcode from the App Store, then run xcode-select if needed."
+                        .to_string(),
+                ),
+            ));
+            requirements.push(tool_requirement(
+                "clang",
+                "Apple Clang",
+                &report.clang,
+                false,
+                Some("Install Xcode command line tools with xcode-select --install.".to_string()),
+            ));
+        }
+        "windows" => {
+            requirements.push(tool_requirement(
+                "visual_studio",
+                "Visual Studio 2022 C++",
+                &report.visual_studio,
+                false,
+                Some("Install Visual Studio 2022 with Desktop development with C++.".to_string()),
+            ));
+            requirements.push(tool_requirement(
+                "windows_sdk",
+                "Windows 10/11 SDK",
+                &report.windows_sdk,
+                false,
+                Some("Install the Windows SDK through Visual Studio Installer.".to_string()),
+            ));
+        }
+        _ => {
+            requirements.push(SetupRequirement {
+                key: "platform".to_string(),
+                label: "Build platform".to_string(),
+                status: if report.supported {
+                    SetupRequirementStatus::Ready
+                } else {
+                    SetupRequirementStatus::Manual
+                },
+                detail: if report.supported {
+                    format!(
+                        "Using {}",
+                        compiler_platform_label(&report.compiler_platform)
+                    )
+                } else {
+                    "This operating system is not configured for C4D SDK builds yet.".to_string()
+                },
+                path: None,
+                version: None,
+                auto_installable: false,
+                install_hint: None,
+            });
+        }
+    }
+
+    requirements
+}
+
+fn c4d_requirement(installed_c4d_versions: &[InstalledC4dVersion]) -> SetupRequirement {
+    if installed_c4d_versions.is_empty() {
+        return SetupRequirement {
+            key: "cinema4d".to_string(),
+            label: "Cinema 4D 2024.4+".to_string(),
+            status: SetupRequirementStatus::Manual,
+            detail: "No local Cinema 4D installation was detected.".to_string(),
+            path: None,
+            version: None,
+            auto_installable: false,
+            install_hint: Some(
+                "Install Cinema 4D 2024.4 or newer before building plugins.".to_string(),
+            ),
+        };
+    }
+
+    let latest = &installed_c4d_versions[0];
+    SetupRequirement {
+        key: "cinema4d".to_string(),
+        label: "Cinema 4D 2024.4+".to_string(),
+        status: SetupRequirementStatus::Ready,
+        detail: format!("Detected {} installation(s).", installed_c4d_versions.len()),
+        path: Some(latest.path.clone()),
+        version: Some(latest.version.clone()),
+        auto_installable: false,
+        install_hint: None,
+    }
+}
+
+fn sdk_root_requirement(sdk_root: Option<&str>) -> SetupRequirement {
+    let Some(root) = sdk_root.filter(|item| !item.trim().is_empty()) else {
+        return SetupRequirement {
+            key: "sdk_root".to_string(),
+            label: "SDK root".to_string(),
+            status: SetupRequirementStatus::Missing,
+            detail: "Choose a local SDK root folder without spaces.".to_string(),
+            path: None,
+            version: None,
+            auto_installable: true,
+            install_hint: Some("Use one-click setup to create Documents/Maxon_SDK.".to_string()),
+        };
+    };
+
+    let has_spaces = root.chars().any(char::is_whitespace);
+    SetupRequirement {
+        key: "sdk_root".to_string(),
+        label: "SDK root".to_string(),
+        status: if has_spaces {
+            SetupRequirementStatus::Warning
+        } else {
+            SetupRequirementStatus::Ready
+        },
+        detail: if has_spaces {
+            "SDK root contains spaces; Maxon CMake/Xcode scripts can fail on this path.".to_string()
+        } else {
+            "SDK root is configured.".to_string()
+        },
+        path: Some(root.to_string()),
+        version: None,
+        auto_installable: true,
+        install_hint: Some("Use a path like ~/Documents/Maxon_SDK.".to_string()),
+    }
+}
+
+fn sdk_version_requirements(
+    installed_c4d_versions: &[InstalledC4dVersion],
+    sdk_versions: &[SdkVersionOption],
+) -> Vec<SetupRequirement> {
+    let mut required_versions = installed_c4d_versions
+        .iter()
+        .map(|item| item.sdk_version.clone())
+        .collect::<Vec<_>>();
+    required_versions.sort();
+    required_versions.dedup();
+
+    if required_versions.is_empty() {
+        required_versions.push(sdk::DEFAULT_MIN_SDK_VERSION.to_string());
+    }
+
+    required_versions
+        .into_iter()
+        .map(|version| {
+            let option = sdk_versions.iter().find(|item| item.version == version);
+            let ready =
+                option.is_some_and(|item| item.sdk_root.is_some() || item.sdk_zip.is_some());
+            let download_url = option.and_then(|item| item.download_url.clone());
+            SetupRequirement {
+                key: format!("sdk_{version}"),
+                label: format!("C++ SDK {version}"),
+                status: if ready {
+                    SetupRequirementStatus::Ready
+                } else if download_url.is_some() {
+                    SetupRequirementStatus::Missing
+                } else {
+                    SetupRequirementStatus::Manual
+                },
+                detail: option
+                    .map(|item| item.status.clone())
+                    .unwrap_or_else(|| "No SDK source is configured.".to_string()),
+                path: option
+                    .and_then(|item| item.sdk_root.clone().or_else(|| item.sdk_zip.clone())),
+                version: Some(version.clone()),
+                auto_installable: download_url.is_some(),
+                install_hint: download_url
+                    .map(|url| format!("One-click setup can download and extract {url}.")),
+            }
+        })
+        .collect()
+}
+
+fn tool_requirement(
+    key: &str,
+    label: &str,
+    tool: &ToolStatus,
+    auto_installable: bool,
+    install_hint: Option<String>,
+) -> SetupRequirement {
+    SetupRequirement {
+        key: key.to_string(),
+        label: label.to_string(),
+        status: if tool.found {
+            SetupRequirementStatus::Ready
+        } else if auto_installable {
+            SetupRequirementStatus::Missing
+        } else {
+            SetupRequirementStatus::Manual
+        },
+        detail: tool.message.clone().unwrap_or_else(|| {
+            if tool.found {
+                "Detected.".to_string()
+            } else {
+                "Not detected.".to_string()
+            }
+        }),
+        path: tool.path.clone(),
+        version: tool.version.clone(),
+        auto_installable,
+        install_hint,
+    }
+}
+
+fn cmake_install_hint() -> Option<String> {
+    let hint = match std::env::consts::OS {
+        "macos" => "Install CMake with Homebrew: brew install cmake.",
+        "windows" => "Install CMake with winget: winget install Kitware.CMake.",
+        "linux" => "Install CMake 3.30+ with your system package manager or Kitware packages.",
+        _ => "Install CMake 3.30+ and ensure it is available in PATH.",
+    };
+
+    Some(hint.to_string())
+}
+
+fn compiler_platform_label(platform: &CompilerPlatform) -> &'static str {
+    match platform {
+        CompilerPlatform::Windows => "Windows",
+        CompilerPlatform::Macos => "macOS",
+        CompilerPlatform::Linux => "Linux",
+        CompilerPlatform::Unsupported => "unsupported platform",
     }
 }
 
