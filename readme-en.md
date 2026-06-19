@@ -28,6 +28,7 @@ SDK resolution order is: extracted SDKs under `SDK Root\<version>\sdk`, download
 - C4D Versions: version tags generated from the SDK Sources start version. Automatic selection only includes locally resolved SDK roots, SDK archives, or installed `sdk.zip` files; for example, if 2025 is not installed or configured, the build queue skips 2025.
 - Configuration: build mode, one of `Debug`, `Release`, or `Both`.
 - Package Mode: packaging mode, one of `Merged`, `Per Version`, or `Both`.
+- Artifact naming: package names keep only the C4D major version, so `2024.4` outputs as `2024`; Release has no configuration suffix, while Debug adds `_Debug`.
 - Output Dir: artifact output folder. Empty uses `Plugin Root\dist`. Supports directory picker and drag-and-drop.
 - Zip: create zip archives.
 - Clean: remove old output folders before packaging.

@@ -28,6 +28,7 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 - C4D Versions：由 SDK Sources 中的起始版本自动生成的版本标签。自动选择只包含本地已解析的 SDK root、SDK 压缩包或本机 `sdk.zip`，例如没有安装或配置 2025 时，构建队列会跳过 2025。
 - Configuration：构建模式，可选 `Debug`、`Release` 或 `Both`。
 - Package Mode：打包模式，可选 `Merged`、`Per Version` 或 `Both`。
+- 产物命名：发布包只保留 C4D 大版本号，例如 `2024.4` 会输出为 `2024`；Release 不加配置后缀，Debug 会追加 `_Debug`。
 - Output Dir：产物输出目录。留空时使用 `Plugin Root\dist`。支持目录选择和拖拽。
 - Zip：生成 zip 压缩包。
 - Clean：打包前清理旧输出目录。

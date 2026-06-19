@@ -72,10 +72,8 @@ fn create_merged_package(
             .and_then(|value| value.to_str())
             .map(|value| format!(".{value}"))
             .unwrap_or_default();
-        let target_name = format!(
-            "{} {} {}{}",
-            request.package_name, version, configuration, suffix
-        );
+        let target_name =
+            package_binary_name(&request.package_name, version, configuration, &suffix);
         std::fs::copy(binary, package_dir.join(target_name))
             .map_err(|error| format!("Failed to copy {}: {error}", binary.display()))?;
     }
@@ -108,9 +106,10 @@ fn create_per_version_packages(
     let mut artifacts = Vec::new();
 
     for (version, configuration, binary) in built_binaries {
-        let package_dir = output_root.join(format!(
-            "{}_{}_{}",
-            request.package_name, version, configuration
+        let package_dir = output_root.join(package_folder_name(
+            &request.package_name,
+            version,
+            configuration,
         ));
         if request.clean_output && package_dir.exists() {
             remove_path(&package_dir)?;
@@ -124,7 +123,8 @@ fn create_per_version_packages(
             .and_then(|value| value.to_str())
             .map(|value| format!(".{value}"))
             .unwrap_or_default();
-        let target_name = format!("{} {}{}", request.package_name, version, suffix);
+        let target_name =
+            package_binary_name(&request.package_name, version, configuration, &suffix);
         std::fs::copy(binary, package_dir.join(target_name))
             .map_err(|error| format!("Failed to copy {}: {error}", binary.display()))?;
 
@@ -160,6 +160,42 @@ fn copy_resources(plugin_root: &Path, package_dir: &Path) -> Result<(), String> 
         remove_path(&target)?;
     }
     copy_dir_recursive(&resource_dir, &target)
+}
+
+fn package_folder_name(package_name: &str, version: &str, configuration: &str) -> String {
+    format!(
+        "{}_{}{}",
+        package_name,
+        package_version_label(version),
+        configuration_suffix(configuration)
+    )
+}
+
+fn package_binary_name(
+    package_name: &str,
+    version: &str,
+    configuration: &str,
+    extension: &str,
+) -> String {
+    format!(
+        "{} {}{}{}",
+        package_name,
+        package_version_label(version),
+        configuration_suffix(configuration),
+        extension
+    )
+}
+
+fn package_version_label(version: &str) -> &str {
+    version.split_once('.').map_or(version, |(major, _)| major)
+}
+
+fn configuration_suffix(configuration: &str) -> &'static str {
+    if configuration.eq_ignore_ascii_case("debug") {
+        "_Debug"
+    } else {
+        ""
+    }
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
@@ -248,4 +284,33 @@ fn create_zip_archive(package_dir: &Path) -> Result<PathBuf, String> {
     zip.finish()
         .map_err(|error| format!("Failed to finalize zip archive: {error}"))?;
     Ok(zip_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn release_package_names_use_major_version_without_configuration() {
+        assert_eq!(
+            package_folder_name("Boghma WaterMark", "2024.4", "Release"),
+            "Boghma WaterMark_2024"
+        );
+        assert_eq!(
+            package_binary_name("Boghma WaterMark", "2024.4", "Release", ".xlib"),
+            "Boghma WaterMark 2024.xlib"
+        );
+    }
+
+    #[test]
+    fn debug_package_names_keep_debug_suffix() {
+        assert_eq!(
+            package_folder_name("Boghma WaterMark", "2024.4", "Debug"),
+            "Boghma WaterMark_2024_Debug"
+        );
+        assert_eq!(
+            package_binary_name("Boghma WaterMark", "2026", "Debug", ".xlib"),
+            "Boghma WaterMark 2026_Debug.xlib"
+        );
+    }
 }

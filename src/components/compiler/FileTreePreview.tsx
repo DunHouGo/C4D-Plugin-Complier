@@ -145,7 +145,12 @@ function buildPreviewTree(
         },
         ...request.versions.flatMap(version =>
           buildConfigurations(request.configuration).map(configuration => ({
-            name: `${request.package_name || defaultPluginName} ${version} ${configuration}.${binaryExtension}`,
+            name: packageBinaryName(
+              request.package_name || defaultPluginName,
+              version,
+              configuration,
+              binaryExtension
+            ),
             kind: 'file' as const,
             fileType: 'binary' as const,
           }))
@@ -168,7 +173,11 @@ function buildPreviewTree(
   ) {
     for (const version of request.versions) {
       for (const configuration of buildConfigurations(request.configuration)) {
-        const folderName = `${request.package_name || defaultPackageName}_${version}_${configuration}`
+        const folderName = packageFolderName(
+          request.package_name || defaultPackageName,
+          version,
+          configuration
+        )
         children.push({
           name: folderName,
           kind: 'folder',
@@ -185,7 +194,12 @@ function buildPreviewTree(
               ],
             },
             {
-              name: `${request.package_name || defaultPluginName} ${version}.${binaryExtension}`,
+              name: packageBinaryName(
+                request.package_name || defaultPluginName,
+                version,
+                configuration,
+                binaryExtension
+              ),
               kind: 'file',
               fileType: 'binary',
             },
@@ -214,6 +228,31 @@ function buildConfigurations(configuration: BuildConfiguration) {
     return ['Debug', 'Release']
   }
   return [configuration]
+}
+
+function packageFolderName(
+  packageName: string,
+  version: string,
+  configuration: string
+) {
+  return `${packageName}_${packageVersionLabel(version)}${configurationSuffix(configuration)}`
+}
+
+function packageBinaryName(
+  packageName: string,
+  version: string,
+  configuration: string,
+  binaryExtension: string
+) {
+  return `${packageName} ${packageVersionLabel(version)}${configurationSuffix(configuration)}.${binaryExtension}`
+}
+
+function packageVersionLabel(version: string) {
+  return version.split('.')[0] || version
+}
+
+function configurationSuffix(configuration: string) {
+  return configuration.toLowerCase() === 'debug' ? '_Debug' : ''
 }
 
 function lastPathPart(path: string) {

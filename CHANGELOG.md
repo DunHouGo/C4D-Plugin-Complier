@@ -2,6 +2,7 @@
 
 ## 2026-06-19
 
+- 调整发布产物命名：版本号只保留 Cinema 4D 大版本，例如 `2024.4` 输出为 `2024`；Release 产物不再带配置后缀，只有 Debug 产物追加 `_Debug`。
 - 修复未安装或未配置 2025 SDK 时仍默认触发 2025 构建的问题：构建版本现在只从本地已解析的 SDK root、SDK 压缩包或本机 `sdk.zip` 中自动生成，官方下载地址只作为可见来源，不再自动加入构建队列。
 - 修复损坏 SDK 压缩包被误识别为可构建来源的问题：无效 zip 现在会显示为 `invalid configured archive` 或 `invalid installed sdk.zip`，不会自动加入构建队列；官方下载缓存损坏时会先删除再重新下载。
 - 修复 2026 CMake SDK 构建带空格模块名时失败的问题，CMake target 会自动转换为无空格名称，并会清理旧模块别名链接，避免 `target_compile_definitions called with invalid arguments`。

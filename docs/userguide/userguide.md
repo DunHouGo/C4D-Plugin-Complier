@@ -10,6 +10,7 @@ C4D Plugin Compiler builds and packages Cinema 4D C++ plugins with locally confi
 - C4D Versions: generated from buildable SDK sources only. Missing versions that only have an official download URL are shown in the SDK Matrix but skipped by default.
 - Configuration: `Debug`, `Release`, or `Both`.
 - Package Mode: `Merged`, `Per Version`, or `Both`.
+- Artifact naming: output names use only the C4D major version; Release has no suffix and Debug adds `_Debug`.
 - Output Dir: package output folder. Empty uses `Plugin Root\dist`.
 - Zip, Clean, Refresh SDK: control archive output, output cleanup, and SDK cache refresh.
 
