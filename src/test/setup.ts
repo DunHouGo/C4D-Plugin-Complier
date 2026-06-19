@@ -27,6 +27,18 @@ vi.mock('@tauri-apps/plugin-updater', () => ({
   check: vi.fn().mockResolvedValue(null),
 }))
 
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  save: vi.fn().mockResolvedValue('/tmp/c4d-build.log'),
+}))
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+  writeTextFile: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  writeText: vi.fn().mockResolvedValue(undefined),
+}))
+
 // Mock typed Tauri bindings (tauri-specta generated)
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {
@@ -76,7 +88,8 @@ vi.mock('@/lib/tauri-bindings', () => ({
               'https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2026_0_0.zip',
           },
         ],
-        cache_root: 'C:\\Users\\test\\AppData\\Local\\Boghma\\C4DPluginCompiler',
+        cache_root:
+          'C:\\Users\\test\\AppData\\Local\\Boghma\\C4DPluginCompiler',
       },
     }),
     listSdkVersions: vi.fn().mockResolvedValue({

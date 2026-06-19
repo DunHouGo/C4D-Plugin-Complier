@@ -9,6 +9,7 @@ describe('CompilerStore', () => {
   beforeEach(() => {
     useCompilerStore.setState({
       request: defaultBuildRequest,
+      artifacts: [],
       sdkStartVersion: DEFAULT_SDK_START_VERSION,
     })
   })
@@ -39,5 +40,22 @@ describe('CompilerStore', () => {
       module_name: 'custom_module',
       package_name: 'Custom Package',
     })
+  })
+
+  it('stores build artifacts for the result sidebar', () => {
+    const { addArtifact, setArtifacts } = useCompilerStore.getState()
+
+    addArtifact({
+      version: '2026',
+      configuration: 'Release',
+      kind: 'version-package',
+      path: '/tmp/plugin',
+    })
+
+    expect(useCompilerStore.getState().artifacts).toHaveLength(1)
+
+    setArtifacts([])
+
+    expect(useCompilerStore.getState().artifacts).toEqual([])
   })
 })

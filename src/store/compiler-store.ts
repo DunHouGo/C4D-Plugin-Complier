@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import type { BuildRequest } from '@/lib/tauri-bindings'
+import type { BuildArtifact, BuildRequest } from '@/lib/tauri-bindings'
 
 export const DEFAULT_SDK_START_VERSION = '2024.4'
 
@@ -20,8 +20,11 @@ export const defaultBuildRequest: BuildRequest = {
 
 interface CompilerState {
   request: BuildRequest
+  artifacts: BuildArtifact[]
   sdkStartVersion: string
   setRequest: (request: BuildRequest) => void
+  setArtifacts: (artifacts: BuildArtifact[]) => void
+  addArtifact: (artifact: BuildArtifact) => void
   updateRequest: (patch: Partial<BuildRequest>) => void
   updatePluginRoot: (pluginRoot: string) => void
   setSdkStartVersion: (version: string, availableVersions: string[]) => void
@@ -31,9 +34,23 @@ export const useCompilerStore = create<CompilerState>()(
   devtools(
     set => ({
       request: defaultBuildRequest,
+      artifacts: [],
       sdkStartVersion: DEFAULT_SDK_START_VERSION,
 
       setRequest: request => set({ request }, undefined, 'setRequest'),
+
+      setArtifacts: artifacts => set({ artifacts }, undefined, 'setArtifacts'),
+
+      addArtifact: artifact =>
+        set(
+          state => ({
+            artifacts: state.artifacts.some(item => item.path === artifact.path)
+              ? state.artifacts
+              : [...state.artifacts, artifact],
+          }),
+          undefined,
+          'addArtifact'
+        ),
 
       updateRequest: patch =>
         set(

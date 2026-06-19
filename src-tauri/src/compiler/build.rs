@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use serde::Deserialize;
 use walkdir::WalkDir;
 
 use crate::compiler::env::detect_cmake_path;
@@ -440,12 +441,13 @@ fn build_legacy_target(
                 project.display()
             ));
         }
+        let scheme = resolve_legacy_xcode_scheme(&project, module_name, log, job_id)?;
         let shim_dir = prepare_python_shim()?;
         let args = vec![
             "-project".to_string(),
             project.display().to_string(),
             "-scheme".to_string(),
-            module_name.to_string(),
+            scheme,
             "-configuration".to_string(),
             configuration.to_string(),
             "-destination".to_string(),
@@ -476,6 +478,102 @@ fn build_legacy_target(
         let _ = (sdk_root, configuration, module_name, log, job_id);
         Err("Legacy SDK builds are currently supported on Windows and macOS".to_string())
     }
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Deserialize)]
+struct XcodeListOutput {
+    project: XcodeProjectList,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Deserialize)]
+struct XcodeProjectList {
+    schemes: Vec<String>,
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_legacy_xcode_scheme(
+    project: &Path,
+    module_name: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<String, String> {
+    let args = vec![
+        "-list".to_string(),
+        "-json".to_string(),
+        "-project".to_string(),
+        project.display().to_string(),
+    ];
+    log_info(
+        log,
+        job_id,
+        &format!("Running: xcodebuild {}", args.join(" ")),
+    );
+    let output = Command::new("xcodebuild")
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("Failed to list Xcode schemes: {error}"))?;
+
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        log_warn(log, job_id, line);
+    }
+    if !output.status.success() {
+        return Err(format!(
+            "Failed to list Xcode schemes with status {}",
+            output.status
+        ));
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let list: XcodeListOutput = serde_json::from_str(&text)
+        .map_err(|error| format!("Failed to parse Xcode scheme list: {error}"))?;
+    let schemes = list.project.schemes;
+    if schemes.is_empty() {
+        return Err(format!(
+            "No Xcode schemes were found in {}",
+            project.display()
+        ));
+    }
+
+    if let Some(scheme) = select_legacy_xcode_scheme(&schemes, module_name) {
+        if !scheme.eq_ignore_ascii_case(module_name) {
+            log_warn(
+                log,
+                job_id,
+                &format!(
+                    "Using legacy Xcode scheme '{scheme}' because '{module_name}' was not listed"
+                ),
+            );
+        }
+        return Ok(scheme);
+    }
+
+    Err(format!(
+        "Xcode scheme '{module_name}' was not found. Available schemes: {}",
+        schemes.join(", ")
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn select_legacy_xcode_scheme(schemes: &[String], module_name: &str) -> Option<String> {
+    if let Some(scheme) = schemes
+        .iter()
+        .find(|scheme| scheme.eq_ignore_ascii_case(module_name))
+    {
+        return Some(scheme.clone());
+    }
+
+    if let Some(scheme) = schemes
+        .iter()
+        .find(|scheme| !scheme.ends_with(".framework"))
+    {
+        return Some(scheme.clone());
+    }
+
+    None
 }
 
 fn is_missing_legacy_generated_file_error(error: &str) -> bool {
@@ -598,7 +696,11 @@ fn tail_lines(text: &str, count: usize) -> String {
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
-    for entry in WalkDir::new(source).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(source)
+        .into_iter()
+        .filter_entry(|entry| should_copy_plugin_entry(source, entry.path()))
+        .filter_map(Result::ok)
+    {
         let relative = entry
             .path()
             .strip_prefix(source)
@@ -607,7 +709,7 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
         if entry.file_type().is_dir() {
             std::fs::create_dir_all(&destination)
                 .map_err(|error| format!("Failed to create {}: {error}", destination.display()))?;
-        } else {
+        } else if entry.file_type().is_file() {
             if let Some(parent) = destination.parent() {
                 std::fs::create_dir_all(parent)
                     .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
@@ -619,9 +721,42 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
                     destination.display()
                 )
             })?;
+        } else {
+            continue;
         }
     }
     Ok(())
+}
+
+fn should_copy_plugin_entry(source: &Path, path: &Path) -> bool {
+    if path == source {
+        return true;
+    }
+
+    path.strip_prefix(source)
+        .ok()
+        .into_iter()
+        .flat_map(|relative| relative.components())
+        .filter_map(|component| component.as_os_str().to_str())
+        .all(|name| !is_ignored_plugin_copy_name(name))
+}
+
+fn is_ignored_plugin_copy_name(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | ".hg"
+            | ".svn"
+            | ".cache"
+            | ".pytest_cache"
+            | ".idea"
+            | ".vscode"
+            | "__pycache__"
+            | "build"
+            | "dist"
+            | "node_modules"
+            | "target"
+    )
 }
 
 fn remove_link_or_dir_cross_platform(path: &Path) -> Result<(), String> {
@@ -718,4 +853,105 @@ fn log_warn(log: LogCallback<'_>, job_id: &str, message: &str) {
         level: "warn".to_string(),
         message: message.to_string(),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+
+    #[test]
+    fn legacy_workspace_copy_skips_vcs_and_cache_dirs() {
+        let source = TempTree::new("c4d-plugin-source");
+        let target = TempTree::new("c4d-plugin-target");
+
+        std::fs::create_dir_all(source.path().join("source")).unwrap();
+        std::fs::write(source.path().join("source").join("main.cpp"), "plugin").unwrap();
+        std::fs::create_dir_all(source.path().join(".git")).unwrap();
+        std::fs::write(source.path().join(".git").join("config"), "git").unwrap();
+        std::fs::create_dir_all(source.path().join("dist")).unwrap();
+        std::fs::write(source.path().join("dist").join("old.zip"), "zip").unwrap();
+
+        copy_dir_recursive(source.path(), target.path()).unwrap();
+
+        assert!(target.path().join("source").join("main.cpp").is_file());
+        assert!(!target.path().join(".git").exists());
+        assert!(!target.path().join("dist").exists());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn legacy_workspace_copy_skips_special_files() {
+        use std::os::unix::net::UnixListener;
+
+        let source = TempTree::new("c4d-plugin-source-socket");
+        let target = TempTree::new("c4d-plugin-target-socket");
+
+        std::fs::write(source.path().join("projectdefinition.txt"), "plugin").unwrap();
+        let socket_path = source.path().join("fsmonitor--daemon.ipc");
+        let listener = UnixListener::bind(&socket_path).unwrap();
+
+        copy_dir_recursive(source.path(), target.path()).unwrap();
+
+        drop(listener);
+        assert!(target.path().join("projectdefinition.txt").is_file());
+        assert!(!target.path().join("fsmonitor--daemon.ipc").exists());
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn legacy_xcode_scheme_matches_module_case_insensitively() {
+        let schemes = vec![
+            "boghma watermark".to_string(),
+            "cinema.framework".to_string(),
+        ];
+
+        assert_eq!(
+            select_legacy_xcode_scheme(&schemes, "Boghma WaterMark"),
+            Some("boghma watermark".to_string())
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn legacy_xcode_scheme_falls_back_to_non_framework_scheme() {
+        let schemes = vec![
+            "cinema.framework".to_string(),
+            "custom scheme".to_string(),
+            "core.framework".to_string(),
+        ];
+
+        assert_eq!(
+            select_legacy_xcode_scheme(&schemes, "Missing Module"),
+            Some("custom scheme".to_string())
+        );
+    }
+
+    struct TempTree {
+        path: PathBuf,
+    }
+
+    impl TempTree {
+        fn new(name: &str) -> Self {
+            let millis = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_millis();
+            let path = PathBuf::from("/tmp").join(format!("{name}-{millis}"));
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempTree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
 }

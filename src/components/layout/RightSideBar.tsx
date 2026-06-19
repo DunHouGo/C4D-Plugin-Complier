@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils'
-import { FileTreePreview } from '@/components/compiler/FileTreePreview'
+import { CompilerResultSidebar } from '@/components/compiler/CompilerResultSidebar'
 
 interface RightSideBarProps {
   children?: React.ReactNode
@@ -14,7 +14,7 @@ export function RightSideBar({ children, className }: RightSideBarProps) {
         className
       )}
     >
-      {children ?? <FileTreePreview />}
+      {children ?? <CompilerResultSidebar />}
     </div>
   )
 }

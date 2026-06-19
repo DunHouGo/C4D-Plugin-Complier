@@ -15,37 +15,37 @@ use crate::types::{
 #[tauri::command]
 #[specta::specta]
 pub async fn detect_environment() -> Result<EnvironmentReport, String> {
-    Ok(env::detect_environment())
+    run_compiler_task(|| Ok(env::detect_environment())).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn resolve_sdk_versions(request: BuildRequest) -> Result<Vec<SdkResolution>, String> {
-    Ok(sdk::resolve_sdk_versions(&request))
+    run_compiler_task(move || Ok(sdk::resolve_sdk_versions(&request))).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn list_sdk_versions() -> Result<Vec<SdkVersionOption>, String> {
-    Ok(sdk::available_sdk_versions())
+    run_compiler_task(|| Ok(sdk::available_sdk_versions())).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn load_sdk_sources() -> Result<SdkSourceConfig, String> {
-    sdk::load_sdk_source_config()
+    run_compiler_task(sdk::load_sdk_source_config).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn save_sdk_root_config(config: SdkRootConfig) -> Result<SdkSourceConfig, String> {
-    sdk::save_sdk_root_config(config)
+    run_compiler_task(move || sdk::save_sdk_root_config(config)).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn auto_configure_sdk_sources() -> Result<SdkAutoConfigReport, String> {
-    sdk::auto_configure_sdk_sources()
+    run_compiler_task(sdk::auto_configure_sdk_sources).await
 }
 
 #[tauri::command]
@@ -54,13 +54,13 @@ pub async fn save_sdk_source(
     version: String,
     source: SdkSourceOverride,
 ) -> Result<SdkVersionOption, String> {
-    sdk::save_sdk_source(&version, source)
+    run_compiler_task(move || sdk::save_sdk_source(&version, source)).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn remove_sdk_source(version: String) -> Result<Vec<SdkVersionOption>, String> {
-    sdk::remove_sdk_source(&version)
+    run_compiler_task(move || sdk::remove_sdk_source(&version)).await
 }
 
 #[tauri::command]
@@ -121,4 +121,14 @@ pub async fn open_artifact_folder(path: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+async fn run_compiler_task<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|error| format!("Compiler task failed: {error}"))?
 }

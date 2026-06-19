@@ -19,7 +19,7 @@ interface TreeNode {
   children?: TreeNode[]
 }
 
-export function FileTreePreview() {
+export function FileTreePreview({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation()
   const request = useCompilerStore(state => state.request)
   const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
@@ -42,21 +42,36 @@ export function FileTreePreview() {
 
   return (
     <>
-      <div className="border-b px-4 py-3">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <FolderTree className="size-4" />
-          {t('preview.title')}
-          <HelpHint text={t('preview.help.title')} />
+      {!compact ? (
+        <div className="border-b px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <FolderTree className="size-4" />
+            {t('preview.title')}
+            <HelpHint text={t('preview.help.title')} />
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {request.versions.map(version => (
+              <Badge key={version} variant="outline">
+                {version}
+              </Badge>
+            ))}
+          </div>
         </div>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {request.versions.map(version => (
-            <Badge key={version} variant="outline">
-              {version}
-            </Badge>
-          ))}
+      ) : (
+        <div className="border-b px-3 py-2">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <HelpHint text={t('preview.help.title')} />
+            <div className="flex min-w-0 flex-wrap gap-1">
+              {request.versions.map(version => (
+                <Badge key={version} variant="outline">
+                  {version}
+                </Badge>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
-      <ScrollArea className="flex-1">
+      )}
+      <ScrollArea className="min-h-0 flex-1 overflow-hidden">
         <div className="space-y-3 p-4">
           <div className="rounded-md border bg-muted/20 p-3">
             <div className="text-xs text-muted-foreground">

@@ -27,15 +27,15 @@ const LAYOUT = {
   main: { min: 38 },
 } as const
 
-// Main content default is calculated to ensure totals sum to 100%
-const MAIN_CONTENT_DEFAULT =
-  100 - LAYOUT.leftSidebar.default - LAYOUT.rightSidebar.default
-
 export function MainWindow() {
   const { theme } = useTheme()
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const rightSidebarVisible = useUIStore(state => state.rightSidebarVisible)
   const isWindows = useIsWindows()
+  const mainDefaultSize =
+    100 -
+    (leftSidebarVisible ? LAYOUT.leftSidebar.default : 0) -
+    (rightSidebarVisible ? LAYOUT.rightSidebar.default : 0)
   // Set up global event listeners (keyboard shortcuts, etc.)
   useMainWindowEventListeners()
 
@@ -64,7 +64,7 @@ export function MainWindow() {
           <ResizableHandle className={cn(!leftSidebarVisible && 'hidden')} />
 
           <ResizablePanel
-            defaultSize={MAIN_CONTENT_DEFAULT}
+            defaultSize={mainDefaultSize}
             minSize={LAYOUT.main.min}
           >
             <MainWindowContent />

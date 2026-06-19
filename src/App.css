@@ -49,6 +49,8 @@
   /* Allow text selection in specific areas */
   input,
   textarea,
+  .select-text,
+  .select-text *,
   [contenteditable='true'] {
     user-select: text !important;
     -webkit-user-select: text !important;

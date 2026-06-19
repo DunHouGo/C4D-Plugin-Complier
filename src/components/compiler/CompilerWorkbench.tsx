@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
+import { save as saveDialog } from '@tauri-apps/plugin-dialog'
+import { writeTextFile } from '@tauri-apps/plugin-fs'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useTranslation } from 'react-i18next'
 import {
-  Archive,
   Box,
   CheckCircle2,
-  FolderOpen,
+  Copy,
   Hammer,
   Play,
   RefreshCw,
+  Save,
   Square,
   XCircle,
 } from 'lucide-react'
@@ -49,18 +52,29 @@ export function CompilerWorkbench() {
   const request = useCompilerStore(state => state.request)
   const updateRequest = useCompilerStore(state => state.updateRequest)
   const updatePluginRoot = useCompilerStore(state => state.updatePluginRoot)
+  const setArtifacts = useCompilerStore(state => state.setArtifacts)
+  const addArtifact = useCompilerStore(state => state.addArtifact)
   const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
   const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
   const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
   const [sdkResolutions, setSdkResolutions] = useState<SdkResolution[]>([])
   const [sdkVersions, setSdkVersions] = useState<SdkVersionOption[]>([])
   const [logs, setLogs] = useState<BuildLogEvent[]>([])
-  const [artifacts, setArtifacts] = useState<BuildArtifact[]>([])
+  const [logActionMessage, setLogActionMessage] = useState<string | null>(null)
   const [progress, setProgress] = useState<BuildProgressEvent | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [state, setState] = useState<BuildState>('idle')
   const sdkStartVersionRef = useRef(sdkStartVersion)
   const compilerPlatform = environment?.compiler_platform ?? 'Unsupported'
+  const latestError = useMemo(
+    () =>
+      [...logs]
+        .reverse()
+        .find(item => item.level === 'error')
+        ?.message.trim(),
+    [logs]
+  )
+  const buildLogText = useMemo(() => formatBuildLog(logs), [logs])
 
   const versionNames = useMemo(
     () => sdkVersions.map(version => version.version),
@@ -119,7 +133,7 @@ export function CompilerWorkbench() {
         setProgress(event.payload)
       }),
       listen<BuildArtifact>('build://artifact', event => {
-        setArtifacts(current => [...current, event.payload])
+        addArtifact(event.payload)
       }),
       listen<BuildFinishedEvent>('build://finished', event => {
         setState(event.payload.success ? 'success' : 'failed')
@@ -137,7 +151,7 @@ export function CompilerWorkbench() {
     return () => {
       void unlisten.then(items => items.forEach(item => item()))
     }
-  }, [setSdkStartVersion])
+  }, [addArtifact, setSdkStartVersion])
 
   async function refreshSdkVersions() {
     const result = await commands.listSdkVersions()
@@ -179,12 +193,14 @@ export function CompilerWorkbench() {
     const result = await commands.resolveSdkVersions(request)
     if (result.status === 'ok') {
       setSdkResolutions(result.data)
-    } else {
-      setLogs(current => [
-        ...current,
-        { job_id: 'system', level: 'error', message: result.error },
-      ])
+      return true
     }
+
+    setLogs(current => [
+      ...current,
+      { job_id: 'system', level: 'error', message: result.error },
+    ])
+    return false
   }
 
   async function startBuild() {
@@ -192,7 +208,12 @@ export function CompilerWorkbench() {
     setArtifacts([])
     setProgress(null)
     setState('running')
-    await resolveSdks()
+    const resolved = await resolveSdks()
+    if (!resolved) {
+      setState('failed')
+      return
+    }
+
     const result = await commands.startBuild(request)
     if (result.status === 'ok') {
       setJobId(result.data.id)
@@ -206,6 +227,31 @@ export function CompilerWorkbench() {
     if (!jobId) return
     await commands.cancelBuild(jobId)
     setState('idle')
+  }
+
+  async function copyBuildLog() {
+    if (!buildLogText) return
+    try {
+      await writeText(buildLogText)
+      setLogActionMessage(t('compiler.logs.copied'))
+    } catch (error) {
+      setLogActionMessage(t('compiler.logs.copyFailed', { message: error }))
+    }
+  }
+
+  async function saveBuildLog() {
+    if (!buildLogText) return
+    try {
+      const path = await saveDialog({
+        defaultPath: `c4d-build-${new Date().toISOString().replace(/[:.]/g, '-')}.log`,
+        filters: [{ name: 'Log', extensions: ['log', 'txt'] }],
+      })
+      if (!path) return
+      await writeTextFile(path, buildLogText)
+      setLogActionMessage(t('compiler.logs.saved'))
+    } catch (error) {
+      setLogActionMessage(t('compiler.logs.saveFailed', { message: error }))
+    }
   }
 
   return (
@@ -417,7 +463,7 @@ export function CompilerWorkbench() {
         </ScrollArea>
       </aside>
 
-      <main className="flex min-w-0 flex-col overflow-hidden">
+      <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <div className="grid grid-cols-3 gap-3 border-b p-4">
           <StatusPanel title={t('compiler.panels.environment')}>
             <ToolLine label="CMake" tool={environment?.cmake} />
@@ -456,7 +502,14 @@ export function CompilerWorkbench() {
               sdkResolutions.map(item => (
                 <div key={item.version} className="flex items-center gap-2">
                   <Badge variant="outline">{item.version}</Badge>
-                  <span className="truncate text-xs">{item.status}</span>
+                  <span
+                    className={cn(
+                      'truncate text-xs',
+                      isResolvedSdk(item) && 'text-green-600'
+                    )}
+                  >
+                    {item.status}
+                  </span>
                 </div>
               ))
             )}
@@ -477,16 +530,52 @@ export function CompilerWorkbench() {
                 ? `${progress.current}/${progress.total} ${progress.label}`
                 : t('compiler.empty.noActiveBuild')}
             </div>
+            {state === 'failed' && latestError ? (
+              <ScrollArea className="h-20 overflow-hidden rounded-sm">
+                <div className="whitespace-pre-wrap break-words pr-2 text-xs text-destructive">
+                  {latestError}
+                </div>
+              </ScrollArea>
+            ) : null}
           </StatusPanel>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_320px] overflow-hidden">
-          <section className="flex min-w-0 flex-col">
-            <div className="flex h-10 items-center gap-2 border-b px-4 text-sm font-medium">
-              {t('compiler.panels.buildLog')}
+        <div className="grid min-h-0 flex-1 overflow-hidden">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+            <div className="flex h-10 items-center justify-between gap-2 border-b px-4 text-sm font-medium">
+              <div className="flex min-w-0 items-center gap-2">
+                <span>{t('compiler.panels.buildLog')}</span>
+                {logActionMessage ? (
+                  <span className="truncate text-xs font-normal text-muted-foreground">
+                    {logActionMessage}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  disabled={!buildLogText}
+                  title={t('compiler.actions.copyLog')}
+                  onClick={() => void copyBuildLog()}
+                >
+                  <Copy className="size-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  disabled={!buildLogText}
+                  title={t('compiler.actions.saveLog')}
+                  onClick={() => void saveBuildLog()}
+                >
+                  <Save className="size-3.5" />
+                </Button>
+              </div>
             </div>
-            <ScrollArea className="flex-1">
-              <div className="space-y-1 p-4 font-mono text-xs">
+            <ScrollArea className="min-h-0 flex-1 overflow-hidden">
+              <div className="space-y-1 p-4 font-mono text-xs select-text">
                 {logs.length === 0 ? (
                   <div className="text-muted-foreground">
                     {t('compiler.empty.noLogs')}
@@ -496,7 +585,7 @@ export function CompilerWorkbench() {
                     <div
                       key={`${item.job_id}-${index}`}
                       className={cn(
-                        'rounded px-2 py-1',
+                        'whitespace-pre-wrap break-words rounded px-2 py-1',
                         item.level === 'error' && 'bg-destructive/10',
                         item.level === 'warn' && 'bg-amber-500/10'
                       )}
@@ -511,50 +600,18 @@ export function CompilerWorkbench() {
               </div>
             </ScrollArea>
           </section>
-
-          <aside className="flex min-w-0 flex-col border-l">
-            <div className="flex h-10 items-center gap-2 border-b px-4 text-sm font-medium">
-              <Archive className="size-4" />
-              {t('compiler.panels.artifacts')}
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="space-y-2 p-3">
-                {artifacts.length === 0 ? (
-                  <div className="text-xs text-muted-foreground">
-                    {t('compiler.empty.artifacts')}
-                  </div>
-                ) : (
-                  artifacts.map(item => (
-                    <div
-                      key={item.path}
-                      className="rounded-md border bg-background p-3"
-                    >
-                      <div className="text-sm font-medium">{item.kind}</div>
-                      <div className="mt-1 truncate text-xs text-muted-foreground">
-                        {item.path}
-                      </div>
-                      <Button
-                        className="mt-2"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          void commands.openArtifactFolder(item.path)
-                        }
-                      >
-                        <FolderOpen className="size-3.5" />
-                        {t('compiler.actions.open')}
-                        <HelpHint text={t('compiler.help.openArtifact')} />
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </aside>
         </div>
       </main>
     </div>
   )
+}
+
+function isResolvedSdk(item: SdkResolution) {
+  return Boolean(item.sdk_root || item.archive_path || item.download_url)
+}
+
+function formatBuildLog(logs: BuildLogEvent[]) {
+  return logs.map(item => `[${item.level}] ${item.message}`).join('\n')
 }
 
 function Field({
