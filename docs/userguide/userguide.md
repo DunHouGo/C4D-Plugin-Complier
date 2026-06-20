@@ -5,8 +5,7 @@ C4D Plugin Compiler builds and packages Cinema 4D C++ plugins with locally confi
 ## Build Setup
 
 - Plugin Root: the plugin module folder that contains `project/`, `source/`, and optional `res/`.
-- Module: the SDK module folder. For 2026 CMake SDK builds, spaces are converted to a target-safe name internally.
-- Package: the generated package folder name.
+- Package: the generated package folder name and internal SDK module name. Selecting Plugin Root fills it from the folder name; editing Package updates the internal module name too. For 2026 CMake SDK builds, spaces are converted to a target-safe name internally, and a single nested SDK module such as `BackHighlight/draw.back/project/projectdefinition.txt` is used as the actual target.
 - C4D Versions: generated from buildable SDK sources only. Missing versions that only have an official download URL are shown in the SDK Matrix but skipped by default.
 - Configuration: `Debug`, `Release`, or `Both`.
 - Package Mode: `Merged`, `Per Version`, or `Both`.
@@ -19,6 +18,10 @@ C4D Plugin Compiler builds and packages Cinema 4D C++ plugins with locally confi
 Use one SDK Root folder without spaces, such as `Documents\Maxon_SDK`. The app resolves SDKs in this order: configured SDK root, configured archive, installed Cinema 4D `sdk.zip`, cache root, then official download URL.
 
 The SDK Matrix stays visible for known versions, but only SDK roots, archives, and installed `sdk.zip` files are treated as buildable by default. This prevents a missing 2025 install from silently entering a 2024.4 and 2026 local build.
+
+## Queue Mode
+
+Add to Queue copies the current build settings into a queue item. Edit loads a queue item back into the left form, Update Queue Item saves the changed settings, and the arrow buttons reorder queued builds before Run Queue executes them serially.
 
 ## Build Logs
 

@@ -3,6 +3,15 @@ import { devtools } from 'zustand/middleware'
 import type { BuildArtifact, BuildRequest } from '@/lib/tauri-bindings'
 
 export const DEFAULT_SDK_START_VERSION = '2024.4'
+export type BuildQueueStatus = 'queued' | 'running' | 'success' | 'failed'
+
+export interface BuildQueueItem {
+  id: string
+  request: BuildRequest
+  status: BuildQueueStatus
+  message: string | null
+  jobId: string | null
+}
 
 export const defaultBuildRequest: BuildRequest = {
   plugin_root: '',
@@ -21,11 +30,22 @@ export const defaultBuildRequest: BuildRequest = {
 interface CompilerState {
   request: BuildRequest
   artifacts: BuildArtifact[]
+  buildQueue: BuildQueueItem[]
   sdkStartVersion: string
   setRequest: (request: BuildRequest) => void
   setArtifacts: (artifacts: BuildArtifact[]) => void
   addArtifact: (artifact: BuildArtifact) => void
+  addBuildQueueItem: (request: BuildRequest) => string
+  removeBuildQueueItem: (id: string) => void
+  clearBuildQueue: () => void
+  moveBuildQueueItem: (id: string, direction: 'up' | 'down') => void
+  updateBuildQueueItem: (
+    id: string,
+    patch: Partial<Omit<BuildQueueItem, 'id' | 'request'>>
+  ) => void
+  updateBuildQueueItemRequest: (id: string, request: BuildRequest) => void
   updateRequest: (patch: Partial<BuildRequest>) => void
+  updatePackageName: (packageName: string) => void
   updatePluginRoot: (pluginRoot: string) => void
   setSdkStartVersion: (version: string, availableVersions: string[]) => void
   setBuildVersions: (versions: string[]) => void
@@ -36,6 +56,7 @@ export const useCompilerStore = create<CompilerState>()(
     set => ({
       request: defaultBuildRequest,
       artifacts: [],
+      buildQueue: [],
       sdkStartVersion: DEFAULT_SDK_START_VERSION,
 
       setRequest: request => set({ request }, undefined, 'setRequest'),
@@ -53,11 +74,96 @@ export const useCompilerStore = create<CompilerState>()(
           'addArtifact'
         ),
 
+      addBuildQueueItem: request => {
+        const id = createBuildQueueItemId()
+        set(
+          state => ({
+            buildQueue: [
+              ...state.buildQueue,
+              {
+                id,
+                request: cloneBuildRequest(request),
+                status: 'queued',
+                message: null,
+                jobId: null,
+              },
+            ],
+          }),
+          undefined,
+          'addBuildQueueItem'
+        )
+        return id
+      },
+
+      removeBuildQueueItem: id =>
+        set(
+          state => ({
+            buildQueue: state.buildQueue.filter(item => item.id !== id),
+          }),
+          undefined,
+          'removeBuildQueueItem'
+        ),
+
+      clearBuildQueue: () =>
+        set({ buildQueue: [] }, undefined, 'clearBuildQueue'),
+
+      moveBuildQueueItem: (id, direction) =>
+        set(
+          state => ({
+            buildQueue: moveQueueItem(state.buildQueue, id, direction),
+          }),
+          undefined,
+          'moveBuildQueueItem'
+        ),
+
+      updateBuildQueueItem: (id, patch) =>
+        set(
+          state => ({
+            buildQueue: state.buildQueue.map(item =>
+              item.id === id ? { ...item, ...patch } : item
+            ),
+          }),
+          undefined,
+          'updateBuildQueueItem'
+        ),
+
+      updateBuildQueueItemRequest: (id, request) =>
+        set(
+          state => ({
+            buildQueue: state.buildQueue.map(item =>
+              item.id === id
+                ? {
+                    ...item,
+                    request: cloneBuildRequest(request),
+                    status: 'queued',
+                    message: null,
+                    jobId: null,
+                  }
+                : item
+            ),
+          }),
+          undefined,
+          'updateBuildQueueItemRequest'
+        ),
+
       updateRequest: patch =>
         set(
           state => ({ request: { ...state.request, ...patch } }),
           undefined,
           'updateRequest'
+        ),
+
+      updatePackageName: packageName =>
+        set(
+          state => ({
+            request: {
+              ...state.request,
+              module_name: packageName,
+              package_name: packageName,
+            },
+          }),
+          undefined,
+          'updatePackageName'
         ),
 
       setBuildVersions: versions =>
@@ -80,8 +186,8 @@ export const useCompilerStore = create<CompilerState>()(
               request: {
                 ...state.request,
                 plugin_root: pluginRoot,
-                module_name: state.request.module_name || detectedName,
-                package_name: state.request.package_name || detectedName,
+                module_name: detectedName,
+                package_name: detectedName,
               },
             }
           },
@@ -123,4 +229,42 @@ function detectPluginName(pluginRoot: string): string {
   }
 
   return normalized.split(/[/\\]/).pop() ?? ''
+}
+
+function cloneBuildRequest(request: BuildRequest): BuildRequest {
+  return {
+    ...request,
+    versions: [...request.versions],
+  }
+}
+
+function moveQueueItem(
+  queue: BuildQueueItem[],
+  id: string,
+  direction: 'up' | 'down'
+): BuildQueueItem[] {
+  const index = queue.findIndex(item => item.id === id)
+  if (index < 0) {
+    return queue
+  }
+
+  const nextIndex = direction === 'up' ? index - 1 : index + 1
+  if (nextIndex < 0 || nextIndex >= queue.length) {
+    return queue
+  }
+
+  const nextQueue = [...queue]
+  const currentItem = nextQueue[index]
+  const targetItem = nextQueue[nextIndex]
+  if (!currentItem || !targetItem) {
+    return queue
+  }
+
+  nextQueue[index] = targetItem
+  nextQueue[nextIndex] = currentItem
+  return nextQueue
+}
+
+function createBuildQueueItemId(): string {
+  return `queue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }

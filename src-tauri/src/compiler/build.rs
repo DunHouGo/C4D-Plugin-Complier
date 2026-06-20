@@ -63,8 +63,14 @@ pub fn execute_build(
                 ));
             }
 
-            let build_module_name = cmake_target_name(&request.module_name);
-            let module_alias = prepare_module_alias(request, &build_module_name)?;
+            let module_alias_name = cmake_target_name(&request.module_name);
+            let build_module_name = resolve_cmake_build_module_name(
+                Path::new(&request.plugin_root),
+                &module_alias_name,
+                log,
+                job_id,
+            )?;
+            let module_alias = prepare_module_alias(request, &module_alias_name)?;
             let build_dir = build_dir_for(&sdk_root, version, preset)?;
             if request.clean_output && build_dir.exists() {
                 log_sdk(
@@ -121,7 +127,7 @@ pub fn execute_build(
                     total,
                     label: format!("Building C4D {version} {configuration}"),
                 });
-                build_legacy_target_with_retry(
+                let legacy_binary_name = build_legacy_target_with_retry(
                     &sdk_root,
                     configuration,
                     &request.module_name,
@@ -131,7 +137,7 @@ pub fn execute_build(
                 let binary = find_legacy_plugin_binary(
                     &sdk_root,
                     configuration,
-                    &request.module_name,
+                    &legacy_binary_name,
                     binary_extension,
                 )?;
                 built_binaries.push((version.clone(), configuration.to_string(), binary));
@@ -357,6 +363,90 @@ fn cmake_target_name(module_name: &str) -> String {
     }
 }
 
+fn resolve_cmake_build_module_name(
+    plugin_root: &Path,
+    requested_module_name: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<String, String> {
+    let direct_project = plugin_root.join("project").join("projectdefinition.txt");
+    let direct_cmake_project = plugin_root.join("project").join("CMakeLists.txt");
+    if direct_project.is_file() || direct_cmake_project.is_file() {
+        return Ok(requested_module_name.to_string());
+    }
+
+    let candidates = discover_nested_cmake_module_names(plugin_root);
+    if candidates.is_empty() {
+        return Ok(requested_module_name.to_string());
+    }
+
+    if let Some(candidate) = candidates.iter().find(|candidate| {
+        candidate.eq_ignore_ascii_case(requested_module_name)
+            || cmake_target_name(candidate).eq_ignore_ascii_case(requested_module_name)
+    }) {
+        return Ok(candidate.clone());
+    }
+
+    if candidates.len() == 1 {
+        let module_name = candidates[0].clone();
+        log_warn(
+            log,
+            job_id,
+            "cmake",
+            &format!(
+                "Using nested CMake module target '{module_name}' inside '{}'",
+                plugin_root.display()
+            ),
+        );
+        return Ok(module_name);
+    }
+
+    Err(format!(
+        "Multiple CMake modules were found under {}: {}. Rename the package to match one module or build one module folder at a time.",
+        plugin_root.display(),
+        candidates.join(", ")
+    ))
+}
+
+fn discover_nested_cmake_module_names(plugin_root: &Path) -> Vec<String> {
+    let mut candidates = WalkDir::new(plugin_root)
+        .min_depth(2)
+        .max_depth(4)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .filter(|entry| {
+            entry
+                .path()
+                .file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|file_name| {
+                    file_name == "projectdefinition.txt" || file_name == "CMakeLists.txt"
+                })
+        })
+        .filter_map(|entry| c4d_module_name_from_project_file(plugin_root, entry.path()))
+        .collect::<Vec<_>>();
+
+    candidates.sort();
+    candidates.dedup();
+    candidates
+}
+
+fn c4d_module_name_from_project_file(plugin_root: &Path, project_file: &Path) -> Option<String> {
+    let project_dir = project_file.parent()?;
+    if project_dir.file_name().and_then(|value| value.to_str()) != Some("project") {
+        return None;
+    }
+    let module_dir = project_dir.parent()?;
+    if module_dir == plugin_root {
+        return None;
+    }
+    module_dir
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(ToString::to_string)
+}
+
 fn build_target(
     cmake: &str,
     build_dir: &Path,
@@ -466,9 +556,9 @@ fn build_legacy_target_with_retry(
     module_name: &str,
     log: LogCallback<'_>,
     job_id: &str,
-) -> Result<(), String> {
+) -> Result<String, String> {
     match build_legacy_target(sdk_root, configuration, module_name, log, job_id) {
-        Ok(()) => Ok(()),
+        Ok(binary_name) => Ok(binary_name),
         Err(error) if is_missing_legacy_generated_file_error(&error) => {
             log_warn(
                 log,
@@ -488,27 +578,17 @@ fn build_legacy_target(
     module_name: &str,
     log: LogCallback<'_>,
     job_id: &str,
-) -> Result<(), String> {
+) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        let project = sdk_root
-            .join("plugins")
-            .join(module_name)
-            .join("project")
-            .join(format!("{module_name}.xcodeproj"));
-        if !project.is_dir() {
-            return Err(format!(
-                "Legacy Xcode project was not generated: {}",
-                project.display()
-            ));
-        }
+        let project = resolve_legacy_xcode_project(sdk_root, module_name, log, job_id)?;
         let scheme = resolve_legacy_xcode_scheme(&project, module_name, log, job_id)?;
         let shim_dir = prepare_python_shim()?;
         let args = vec![
             "-project".to_string(),
             project.display().to_string(),
             "-scheme".to_string(),
-            scheme,
+            scheme.clone(),
             "-configuration".to_string(),
             configuration.to_string(),
             "-destination".to_string(),
@@ -525,7 +605,8 @@ fn build_legacy_target(
             &shim_dir,
             log,
             job_id,
-        )
+        )?;
+        Ok(scheme)
     }
 
     #[cfg(target_os = "windows")]
@@ -539,6 +620,63 @@ fn build_legacy_target(
         let _ = (sdk_root, configuration, module_name, log, job_id);
         Err("Legacy SDK builds are currently supported on Windows and macOS".to_string())
     }
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_legacy_xcode_project(
+    sdk_root: &Path,
+    module_name: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<PathBuf, String> {
+    let module_root = sdk_root.join("plugins").join(module_name);
+    let direct_project = module_root
+        .join("project")
+        .join(format!("{module_name}.xcodeproj"));
+    if direct_project.is_dir() {
+        return Ok(direct_project);
+    }
+
+    let projects = WalkDir::new(&module_root)
+        .max_depth(5)
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().to_path_buf())
+        .filter(|path| {
+            path.is_dir()
+                && path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|extension| extension == "xcodeproj")
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(project) = projects.iter().find(|path| {
+        path.file_stem()
+            .and_then(|value| value.to_str())
+            .is_some_and(|stem| stem.eq_ignore_ascii_case(module_name))
+    }) {
+        return Ok(project.clone());
+    }
+
+    if let Some(project) = projects.first() {
+        log_warn(
+            log,
+            job_id,
+            "toolchain",
+            &format!(
+                "Using legacy Xcode project '{}' because '{}' was not generated",
+                project.display(),
+                direct_project.display()
+            ),
+        );
+        return Ok(project.clone());
+    }
+
+    Err(format!(
+        "Legacy Xcode project was not generated under {}",
+        module_root.display()
+    ))
 }
 
 #[cfg(target_os = "macos")]
@@ -1029,6 +1167,44 @@ mod tests {
     }
 
     #[test]
+    fn cmake_build_module_name_uses_requested_name_for_direct_module() {
+        let plugin = TempTree::new("c4d-direct-plugin");
+        std::fs::create_dir_all(plugin.path().join("project")).unwrap();
+        std::fs::write(
+            plugin.path().join("project").join("projectdefinition.txt"),
+            "Type=DLL",
+        )
+        .unwrap();
+
+        let log = |_event: BuildLogEvent| {};
+        let resolved =
+            resolve_cmake_build_module_name(plugin.path(), "BackHighlight", &log, "test").unwrap();
+
+        assert_eq!(resolved, "BackHighlight");
+    }
+
+    #[test]
+    fn cmake_build_module_name_uses_single_nested_projectdefinition_module() {
+        let plugin = TempTree::new("c4d-nested-plugin");
+        std::fs::create_dir_all(plugin.path().join("draw.back").join("project")).unwrap();
+        std::fs::write(
+            plugin
+                .path()
+                .join("draw.back")
+                .join("project")
+                .join("projectdefinition.txt"),
+            "Type=DLL",
+        )
+        .unwrap();
+
+        let log = |_event: BuildLogEvent| {};
+        let resolved =
+            resolve_cmake_build_module_name(plugin.path(), "BackHighlight", &log, "test").unwrap();
+
+        assert_eq!(resolved, "draw.back");
+    }
+
+    #[test]
     fn command_failure_summary_prefers_compiler_errors() {
         let text = [
             "CompileC very long command",
@@ -1112,6 +1288,25 @@ mod tests {
             select_legacy_xcode_scheme(&schemes, "Missing Module"),
             Some("custom scheme".to_string())
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn legacy_xcode_project_falls_back_to_nested_generated_project() {
+        let sdk = TempTree::new("c4d-legacy-sdk");
+        let project = sdk
+            .path()
+            .join("plugins")
+            .join("Draw.back")
+            .join("draw.back")
+            .join("project")
+            .join("draw.back.xcodeproj");
+        std::fs::create_dir_all(&project).unwrap();
+
+        let log = |_event: BuildLogEvent| {};
+        let resolved = resolve_legacy_xcode_project(sdk.path(), "Draw.back", &log, "test").unwrap();
+
+        assert_eq!(resolved, project);
     }
 
     struct TempTree {

@@ -4,17 +4,21 @@ import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useTranslation } from 'react-i18next'
 import {
-  Archive,
+  ArrowDown,
+  ArrowUp,
   Box,
   CheckCircle2,
   Copy,
+  FilePenLine,
   FolderOpen,
   Hammer,
   ListFilter,
+  ListPlus,
   Play,
   RefreshCw,
   Save,
   Square,
+  Trash2,
   XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -51,6 +55,7 @@ import {
 
 type BuildState = 'idle' | 'running' | 'success' | 'failed'
 type LogFilter = 'all' | 'warn' | 'error'
+type OutputTab = 'logs' | 'artifacts'
 type LogCategoryFilter =
   | 'all'
   | 'build'
@@ -76,10 +81,24 @@ export function CompilerWorkbench() {
   const { t } = useTranslation()
   const request = useCompilerStore(state => state.request)
   const updateRequest = useCompilerStore(state => state.updateRequest)
+  const updatePackageName = useCompilerStore(state => state.updatePackageName)
   const updatePluginRoot = useCompilerStore(state => state.updatePluginRoot)
   const artifacts = useCompilerStore(state => state.artifacts)
   const setArtifacts = useCompilerStore(state => state.setArtifacts)
   const addArtifact = useCompilerStore(state => state.addArtifact)
+  const buildQueue = useCompilerStore(state => state.buildQueue)
+  const addBuildQueueItem = useCompilerStore(state => state.addBuildQueueItem)
+  const removeBuildQueueItem = useCompilerStore(
+    state => state.removeBuildQueueItem
+  )
+  const clearBuildQueue = useCompilerStore(state => state.clearBuildQueue)
+  const moveBuildQueueItem = useCompilerStore(state => state.moveBuildQueueItem)
+  const updateBuildQueueItem = useCompilerStore(
+    state => state.updateBuildQueueItem
+  )
+  const updateBuildQueueItemRequest = useCompilerStore(
+    state => state.updateBuildQueueItemRequest
+  )
   const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
   const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
   const setBuildVersions = useCompilerStore(state => state.setBuildVersions)
@@ -90,12 +109,27 @@ export function CompilerWorkbench() {
   const [logFilter, setLogFilter] = useState<LogFilter>('all')
   const [logCategoryFilter, setLogCategoryFilter] =
     useState<LogCategoryFilter>('all')
+  const [outputTab, setOutputTab] = useState<OutputTab>('logs')
   const [autoScrollLogs, setAutoScrollLogs] = useState(true)
   const [logActionMessage, setLogActionMessage] = useState<string | null>(null)
   const [progress, setProgress] = useState<BuildProgressEvent | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
+  const [runningQueueItemId, setRunningQueueItemId] = useState<string | null>(
+    null
+  )
+  const [editingQueueItemId, setEditingQueueItemId] = useState<string | null>(
+    null
+  )
+  const [stopQueueAfterCurrent, setStopQueueAfterCurrent] = useState(false)
   const [state, setState] = useState<BuildState>('idle')
   const sdkStartVersionRef = useRef(sdkStartVersion)
+  const buildFinishedResolverRef = useRef<{
+    jobId: string
+    resolve: (event: BuildFinishedEvent) => void
+  } | null>(null)
+  const stopQueueAfterCurrentRef = useRef(stopQueueAfterCurrent)
+  const runningQueueItemIdRef = useRef(runningQueueItemId)
+  const jobIdRef = useRef(jobId)
   const compilerPlatform = environment?.compiler_platform ?? 'Unsupported'
   const latestError = useMemo(
     () =>
@@ -133,6 +167,18 @@ export function CompilerWorkbench() {
   useEffect(() => {
     sdkStartVersionRef.current = sdkStartVersion
   }, [sdkStartVersion])
+
+  useEffect(() => {
+    stopQueueAfterCurrentRef.current = stopQueueAfterCurrent
+  }, [stopQueueAfterCurrent])
+
+  useEffect(() => {
+    runningQueueItemIdRef.current = runningQueueItemId
+  }, [runningQueueItemId])
+
+  useEffect(() => {
+    jobIdRef.current = jobId
+  }, [jobId])
 
   useEffect(() => {
     if (!autoScrollLogs) return
@@ -179,7 +225,6 @@ export function CompilerWorkbench() {
         addArtifact(event.payload)
       }),
       listen<BuildFinishedEvent>('build://finished', event => {
-        setState(event.payload.success ? 'success' : 'failed')
         setLogs(current => [
           ...current,
           {
@@ -190,13 +235,28 @@ export function CompilerWorkbench() {
             message: event.payload.message,
           },
         ])
+        if (event.payload.job_id !== jobIdRef.current) return
+
+        setState(event.payload.success ? 'success' : 'failed')
+        const queueItemId = runningQueueItemIdRef.current
+        if (queueItemId) {
+          updateBuildQueueItem(queueItemId, {
+            status: event.payload.success ? 'success' : 'failed',
+            message: event.payload.message,
+          })
+        }
+
+        if (buildFinishedResolverRef.current?.jobId === event.payload.job_id) {
+          buildFinishedResolverRef.current.resolve(event.payload)
+          buildFinishedResolverRef.current = null
+        }
       }),
     ])
 
     return () => {
       void unlisten.then(items => items.forEach(item => item()))
     }
-  }, [addArtifact, setBuildVersions, setSdkStartVersion])
+  }, [addArtifact, setBuildVersions, setSdkStartVersion, updateBuildQueueItem])
 
   async function refreshSdkVersions() {
     const result = await commands.listSdkVersions()
@@ -222,8 +282,8 @@ export function CompilerWorkbench() {
     }
   }
 
-  async function resolveSdks() {
-    const result = await commands.resolveSdkVersions(request)
+  async function resolveSdks(nextRequest = request) {
+    const result = await commands.resolveSdkVersions(nextRequest)
     if (result.status === 'ok') {
       setSdkResolutions(result.data)
       return true
@@ -234,29 +294,163 @@ export function CompilerWorkbench() {
   }
 
   async function startBuild() {
+    setRunningQueueItemId(null)
+    runningQueueItemIdRef.current = null
+    setStopQueueAfterCurrent(false)
+    stopQueueAfterCurrentRef.current = false
     setLogs([])
     setArtifacts([])
     setProgress(null)
-    setState('running')
-    const resolved = await resolveSdks()
-    if (!resolved) {
-      setState('failed')
-      return
-    }
-
-    const result = await commands.startBuild(request)
-    if (result.status === 'ok') {
-      setJobId(result.data.id)
-    } else {
-      setState('failed')
-      setLogs([systemLog('error', result.error)])
-    }
+    await runBuildRequest(request)
   }
 
   async function cancelBuild() {
-    if (!jobId) return
-    await commands.cancelBuild(jobId)
+    if (jobIdRef.current) {
+      await commands.cancelBuild(jobIdRef.current)
+    }
+    if (runningQueueItemIdRef.current) {
+      updateBuildQueueItem(runningQueueItemIdRef.current, {
+        status: 'failed',
+        message: t('compiler.queue.cancelled'),
+      })
+    }
+    setStopQueueAfterCurrent(true)
+    stopQueueAfterCurrentRef.current = true
     setState('idle')
+  }
+
+  function addCurrentRequestToQueue() {
+    if (editingQueueItemId) {
+      updateBuildQueueItemRequest(editingQueueItemId, request)
+      setLogs(current => [
+        ...current,
+        systemLog(
+          'info',
+          t('compiler.queue.updatedLog', {
+            name: queueItemLabel({ request }),
+            versions: request.versions.join(', '),
+          })
+        ),
+      ])
+      setEditingQueueItemId(null)
+      return
+    }
+
+    addBuildQueueItem(request)
+    setLogs(current => [
+      ...current,
+      systemLog(
+        'info',
+        t('compiler.queue.addedLog', {
+          name: queueItemLabel({ request }),
+          versions: request.versions.join(', '),
+        })
+      ),
+    ])
+  }
+
+  function editQueueItem(id: string) {
+    const item = useCompilerStore
+      .getState()
+      .buildQueue.find(queueItem => queueItem.id === id)
+    if (!item) return
+    useCompilerStore.getState().setRequest(item.request)
+    setEditingQueueItemId(id)
+  }
+
+  function cancelQueueItemEdit() {
+    setEditingQueueItemId(null)
+  }
+
+  function removeQueueItem(id: string) {
+    removeBuildQueueItem(id)
+    if (editingQueueItemId === id) {
+      setEditingQueueItemId(null)
+    }
+  }
+
+  function clearQueue() {
+    clearBuildQueue()
+    setEditingQueueItemId(null)
+  }
+
+  async function startQueuedBuilds() {
+    const pendingQueue = useCompilerStore
+      .getState()
+      .buildQueue.filter(item => item.status === 'queued')
+    if (pendingQueue.length === 0) return
+
+    setStopQueueAfterCurrent(false)
+    stopQueueAfterCurrentRef.current = false
+    setLogs([])
+    setArtifacts([])
+    setProgress(null)
+
+    for (const item of pendingQueue) {
+      if (stopQueueAfterCurrentRef.current) break
+
+      setRunningQueueItemId(item.id)
+      runningQueueItemIdRef.current = item.id
+      updateBuildQueueItem(item.id, {
+        status: 'running',
+        message: t('compiler.queue.running'),
+      })
+      setLogs(current => [
+        ...current,
+        systemLog(
+          'info',
+          t('compiler.queue.startLog', {
+            name: queueItemLabel(item),
+            versions: item.request.versions.join(', '),
+          })
+        ),
+      ])
+
+      const result = await runBuildRequest(item.request)
+      updateBuildQueueItem(item.id, {
+        status: result.success ? 'success' : 'failed',
+        message: result.message,
+      })
+
+      if (!result.success) break
+    }
+
+    setRunningQueueItemId(null)
+    runningQueueItemIdRef.current = null
+  }
+
+  async function runBuildRequest(nextRequest: typeof request) {
+    setState('running')
+    setProgress(null)
+    const resolved = await resolveSdks(nextRequest)
+    if (!resolved) {
+      const message = t('compiler.queue.sdkResolveFailed')
+      setState('failed')
+      return { success: false, message }
+    }
+
+    const result = await commands.startBuild(nextRequest)
+    if (result.status === 'error') {
+      setState('failed')
+      setLogs(current => [...current, systemLog('error', result.error)])
+      return { success: false, message: result.error }
+    }
+
+    setJobId(result.data.id)
+    jobIdRef.current = result.data.id
+    if (runningQueueItemIdRef.current) {
+      updateBuildQueueItem(runningQueueItemIdRef.current, {
+        jobId: result.data.id,
+      })
+    }
+
+    return await waitForBuildFinished(result.data.id)
+  }
+
+  function waitForBuildFinished(activeJobId: string) {
+    return new Promise<BuildFinishedEvent>(resolve => {
+      buildFinishedResolverRef.current = { jobId: activeJobId, resolve }
+    })
   }
 
   async function copyBuildLog() {
@@ -289,7 +483,7 @@ export function CompilerWorkbench() {
 
   return (
     <div className="grid h-full grid-cols-[minmax(320px,390px)_1fr] overflow-hidden">
-      <aside className="flex min-h-0 flex-col border-r bg-muted/20">
+      <aside className="flex min-h-0 flex-col overflow-hidden border-r bg-muted/20">
         <div className="border-b px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Hammer className="size-4" />
@@ -299,7 +493,7 @@ export function CompilerWorkbench() {
             {t('compiler.subtitle')}
           </div>
         </div>
-        <ScrollArea className="flex-1">
+        <ScrollArea className="min-h-0 flex-1 overflow-hidden">
           <div className="space-y-4 p-4">
             <Field
               label={t('compiler.fields.pluginRoot')}
@@ -311,30 +505,15 @@ export function CompilerWorkbench() {
                 onChange={value => updatePluginRoot(value)}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field
-                label={t('compiler.fields.module')}
-                help={t('compiler.help.module')}
-              >
-                <Input
-                  value={request.module_name}
-                  onChange={event =>
-                    updateRequest({ module_name: event.target.value })
-                  }
-                />
-              </Field>
-              <Field
-                label={t('compiler.fields.package')}
-                help={t('compiler.help.package')}
-              >
-                <Input
-                  value={request.package_name}
-                  onChange={event =>
-                    updateRequest({ package_name: event.target.value })
-                  }
-                />
-              </Field>
-            </div>
+            <Field
+              label={t('compiler.fields.package')}
+              help={t('compiler.help.package')}
+            >
+              <Input
+                value={request.package_name}
+                onChange={event => updatePackageName(event.target.value)}
+              />
+            </Field>
             <Field
               label={t('compiler.fields.c4dVersions')}
               help={t('compiler.help.c4dVersions')}
@@ -480,6 +659,34 @@ export function CompilerWorkbench() {
               <Button
                 variant="outline"
                 size="icon"
+                title={
+                  editingQueueItemId
+                    ? t('compiler.actions.updateQueueItem')
+                    : t('compiler.actions.addToQueue')
+                }
+                disabled={state === 'running'}
+                onClick={addCurrentRequestToQueue}
+              >
+                {editingQueueItemId ? (
+                  <FilePenLine className="size-4" />
+                ) : (
+                  <ListPlus className="size-4" />
+                )}
+              </Button>
+              {editingQueueItemId ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title={t('compiler.actions.cancelQueueEdit')}
+                  disabled={state === 'running'}
+                  onClick={cancelQueueItemEdit}
+                >
+                  <XCircle className="size-4" />
+                </Button>
+              ) : null}
+              <Button
+                variant="outline"
+                size="icon"
                 title={t('compiler.actions.resolveSdks')}
                 onClick={() => void resolveSdks()}
               >
@@ -506,6 +713,146 @@ export function CompilerWorkbench() {
                 <Square className="size-4" />
               </Button>
             </div>
+            <section className="rounded-md border bg-background">
+              <div className="flex min-h-10 items-center justify-between gap-2 border-b px-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <ListPlus className="size-4 text-muted-foreground" />
+                  <span className="truncate text-sm font-medium">
+                    {t('compiler.panels.queue')}
+                  </span>
+                  <Badge variant="outline" className="font-normal">
+                    {buildQueue.length}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    title={t('compiler.actions.runQueue')}
+                    disabled={
+                      state === 'running' ||
+                      !buildQueue.some(item => item.status === 'queued')
+                    }
+                    onClick={() => void startQueuedBuilds()}
+                  >
+                    <Play className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    title={t('compiler.actions.clearQueue')}
+                    disabled={state === 'running' || buildQueue.length === 0}
+                    onClick={clearQueue}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2 p-3">
+                {editingQueueItemId ? (
+                  <div className="rounded-sm border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs text-primary">
+                    {t('compiler.queue.editing')}
+                  </div>
+                ) : null}
+                {buildQueue.length === 0 ? (
+                  <div className="text-xs text-muted-foreground">
+                    {t('compiler.empty.queue')}
+                  </div>
+                ) : (
+                  buildQueue.map((item, index) => (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        'grid min-h-20 grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-md border bg-muted/20 p-2',
+                        editingQueueItemId === item.id &&
+                          'border-primary bg-primary/5',
+                        item.status === 'running' && 'border-primary/50',
+                        item.status === 'failed' &&
+                          'border-destructive/30 bg-destructive/5'
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">
+                          {queueItemLabel(item)}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {item.request.versions.map(version => (
+                            <Badge
+                              key={`${item.id}-${version}`}
+                              variant="outline"
+                              className="text-[11px]"
+                            >
+                              {version}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {item.request.configuration} ·{' '}
+                          {item.request.package_mode}
+                          {item.message ? ` · ${item.message}` : ''}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end justify-between gap-2">
+                        <Badge
+                          variant={
+                            item.status === 'failed'
+                              ? 'destructive'
+                              : 'secondary'
+                          }
+                        >
+                          {t(`compiler.queue.status.${item.status}`)}
+                        </Badge>
+                        <div className="grid grid-cols-2 gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            title={t('compiler.actions.moveQueueItemUp')}
+                            disabled={state === 'running' || index === 0}
+                            onClick={() => moveBuildQueueItem(item.id, 'up')}
+                          >
+                            <ArrowUp className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            title={t('compiler.actions.moveQueueItemDown')}
+                            disabled={
+                              state === 'running' ||
+                              index === buildQueue.length - 1
+                            }
+                            onClick={() => moveBuildQueueItem(item.id, 'down')}
+                          >
+                            <ArrowDown className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            title={t('compiler.actions.editQueueItem')}
+                            disabled={state === 'running'}
+                            onClick={() => editQueueItem(item.id)}
+                          >
+                            <FilePenLine className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7"
+                            title={t('compiler.actions.removeQueueItem')}
+                            disabled={state === 'running'}
+                            onClick={() => removeQueueItem(item.id)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
           </div>
         </ScrollArea>
       </aside>
@@ -587,150 +934,167 @@ export function CompilerWorkbench() {
           </StatusPanel>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_320px] overflow-hidden">
-          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-sm font-medium">
               <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="shrink-0">
-                  {t('compiler.panels.buildLog')}
-                </span>
-                <Badge variant="outline" className="font-normal">
-                  {filteredLogs.length}/{logs.length}
-                </Badge>
+                <ToggleGroup
+                  type="single"
+                  value={outputTab}
+                  variant="outline"
+                  size="sm"
+                  onValueChange={value => {
+                    if (value) setOutputTab(value as OutputTab)
+                  }}
+                >
+                  <ToggleGroupItem value="logs" className="h-7 px-3">
+                    {t('compiler.panels.buildLog')}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="artifacts" className="h-7 px-3">
+                    {t('compiler.panels.artifacts')}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                {outputTab === 'logs' ? (
+                  <Badge variant="outline" className="font-normal">
+                    {filteredLogs.length}/{logs.length}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="font-normal">
+                    {artifacts.length}
+                  </Badge>
+                )}
                 {logActionMessage ? (
                   <span className="truncate text-xs font-normal text-muted-foreground">
                     {logActionMessage}
                   </span>
                 ) : null}
               </div>
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-                <ToggleGroup
-                  type="single"
-                  value={logFilter}
-                  variant="outline"
-                  size="sm"
-                  onValueChange={value => {
-                    if (value) setLogFilter(value as LogFilter)
-                  }}
-                >
-                  <ToggleGroupItem value="all" className="h-7 px-2">
-                    {t('compiler.logs.filter.all')}
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="warn" className="h-7 px-2">
-                    {t('compiler.logs.filter.warn')}
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="error" className="h-7 px-2">
-                    {t('compiler.logs.filter.error')}
-                  </ToggleGroupItem>
-                </ToggleGroup>
-                <div className="flex items-center gap-1">
-                  <ListFilter className="size-3.5 text-muted-foreground" />
-                  <Select
-                    value={logCategoryFilter}
-                    onValueChange={value =>
-                      setLogCategoryFilter(value as LogCategoryFilter)
-                    }
+              {outputTab === 'logs' ? (
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                  <ToggleGroup
+                    type="single"
+                    value={logFilter}
+                    variant="outline"
+                    size="sm"
+                    onValueChange={value => {
+                      if (value) setLogFilter(value as LogFilter)
+                    }}
                   >
-                    <SelectTrigger className="h-7 w-[118px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {LOG_CATEGORY_FILTERS.map(category => (
-                        <SelectItem key={category} value={category}>
-                          {t(`compiler.logs.category.${category}`)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <label className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
-                  <Switch
-                    checked={autoScrollLogs}
-                    onCheckedChange={setAutoScrollLogs}
-                  />
-                  <span>{t('compiler.logs.autoScroll')}</span>
-                </label>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  disabled={!filteredBuildLogText}
-                  title={t('compiler.actions.copyLog')}
-                  onClick={() => void copyBuildLog()}
-                >
-                  <Copy className="size-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-7"
-                  disabled={!filteredBuildLogText}
-                  title={t('compiler.actions.saveLog')}
-                  onClick={() => void saveBuildLog()}
-                >
-                  <Save className="size-3.5" />
-                </Button>
-              </div>
-            </div>
-            <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-              <div className="space-y-1 p-4 font-mono text-xs select-text">
-                {logs.length === 0 ? (
-                  <div className="text-muted-foreground">
-                    {t('compiler.empty.noLogs')}
-                  </div>
-                ) : filteredLogs.length === 0 ? (
-                  <div className="text-muted-foreground">
-                    {t('compiler.empty.noFilteredLogs')}
-                  </div>
-                ) : (
-                  filteredLogs.map((item, index) => (
-                    <LogRow key={`${item.job_id}-${index}`} item={item} />
-                  ))
-                )}
-                <div ref={logEndRef} />
-              </div>
-            </ScrollArea>
-          </section>
-
-          <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden border-l">
-            <div className="flex h-10 items-center gap-2 border-b px-4 text-sm font-medium">
-              <Archive className="size-4" />
-              {t('compiler.panels.artifacts')}
-            </div>
-            <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-              <div className="space-y-2 p-3">
-                {artifacts.length === 0 ? (
-                  <div className="text-xs text-muted-foreground">
-                    {t('compiler.empty.artifacts')}
-                  </div>
-                ) : (
-                  artifacts.map(item => (
-                    <div
-                      key={item.path}
-                      className="rounded-md border bg-background p-3"
+                    <ToggleGroupItem value="all" className="h-7 px-2">
+                      {t('compiler.logs.filter.all')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="warn" className="h-7 px-2">
+                      {t('compiler.logs.filter.warn')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="error" className="h-7 px-2">
+                      {t('compiler.logs.filter.error')}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                  <div className="flex items-center gap-1">
+                    <ListFilter className="size-3.5 text-muted-foreground" />
+                    <Select
+                      value={logCategoryFilter}
+                      onValueChange={value =>
+                        setLogCategoryFilter(value as LogCategoryFilter)
+                      }
                     >
-                      <div className="text-sm font-medium">{item.kind}</div>
-                      <div className="mt-1 truncate text-xs text-muted-foreground">
-                        {item.path}
-                      </div>
-                      <Button
-                        className="mt-2"
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          void commands.openArtifactFolder(item.path)
-                        }
-                      >
-                        <FolderOpen className="size-3.5" />
-                        {t('compiler.actions.open')}
-                        <HelpHint text={t('compiler.help.openArtifact')} />
-                      </Button>
+                      <SelectTrigger className="h-7 w-[118px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LOG_CATEGORY_FILTERS.map(category => (
+                          <SelectItem key={category} value={category}>
+                            {t(`compiler.logs.category.${category}`)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+                    <Switch
+                      checked={autoScrollLogs}
+                      onCheckedChange={setAutoScrollLogs}
+                    />
+                    <span>{t('compiler.logs.autoScroll')}</span>
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    disabled={!filteredBuildLogText}
+                    title={t('compiler.actions.copyLog')}
+                    onClick={() => void copyBuildLog()}
+                  >
+                    <Copy className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    disabled={!filteredBuildLogText}
+                    title={t('compiler.actions.saveLog')}
+                    onClick={() => void saveBuildLog()}
+                  >
+                    <Save className="size-3.5" />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+            {outputTab === 'logs' ? (
+              <ScrollArea className="min-h-0 flex-1 overflow-hidden">
+                <div className="space-y-1 p-4 font-mono text-xs select-text">
+                  {logs.length === 0 ? (
+                    <div className="text-muted-foreground">
+                      {t('compiler.empty.noLogs')}
                     </div>
-                  ))
-                )}
-              </div>
-            </ScrollArea>
-          </aside>
+                  ) : filteredLogs.length === 0 ? (
+                    <div className="text-muted-foreground">
+                      {t('compiler.empty.noFilteredLogs')}
+                    </div>
+                  ) : (
+                    filteredLogs.map((item, index) => (
+                      <LogRow key={`${item.job_id}-${index}`} item={item} />
+                    ))
+                  )}
+                  <div ref={logEndRef} />
+                </div>
+              </ScrollArea>
+            ) : (
+              <ScrollArea className="min-h-0 flex-1 overflow-hidden">
+                <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+                  {artifacts.length === 0 ? (
+                    <div className="text-xs text-muted-foreground">
+                      {t('compiler.empty.artifacts')}
+                    </div>
+                  ) : (
+                    artifacts.map(item => (
+                      <div
+                        key={item.path}
+                        className="rounded-md border bg-background p-3"
+                      >
+                        <div className="text-sm font-medium">{item.kind}</div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {item.path}
+                        </div>
+                        <Button
+                          className="mt-2"
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            void commands.openArtifactFolder(item.path)
+                          }
+                        >
+                          <FolderOpen className="size-3.5" />
+                          {t('compiler.actions.open')}
+                          <HelpHint text={t('compiler.help.openArtifact')} />
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            )}
+          </section>
         </div>
       </main>
     </div>
@@ -739,6 +1103,23 @@ export function CompilerWorkbench() {
 
 function isResolvedSdk(item: SdkResolution) {
   return Boolean(item.sdk_root || item.archive_path)
+}
+
+function queueItemLabel(item: {
+  request: { package_name: string; module_name: string; plugin_root: string }
+}) {
+  return (
+    item.request.package_name ||
+    item.request.module_name ||
+    detectPathName(item.request.plugin_root) ||
+    'Plugin'
+  )
+}
+
+function detectPathName(path: string) {
+  const normalized = path.trim().replace(/[/\\]+$/, '')
+  if (!normalized) return ''
+  return normalized.split(/[/\\]/).pop() ?? ''
 }
 
 function formatBuildLog(logs: BuildLogEvent[]) {

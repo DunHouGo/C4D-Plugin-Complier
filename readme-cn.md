@@ -4,8 +4,8 @@ C4D Plugin Compiler 是一个基于 Rust 和 Tauri 2 的 Cinema 4D C++ 插件编
 
 ## 主界面
 
-- 启动时左右侧栏默认隐藏，标题栏两侧按钮可按需显示或隐藏 SDK Sources 面板与 Output Preview 面板。
-- 中间工作台：填写插件构建参数、查看环境状态、解析 SDK、执行构建、查看日志和产物。
+- 左侧工作区用于填写插件构建参数，底部显示构建队列。
+- 中间工作台用于查看环境状态、解析 SDK、执行构建，并通过“构建日志 / 产物”标签页切换查看输出。
 - 在偏好设置中选择简体中文后，主工作台、SDK Sources、Output Preview、按钮、状态和主要提示会立即切换为中文。
 
 ## SDK Sources 参数
@@ -22,9 +22,8 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 
 ## 构建参数
 
-- Plugin Root：插件源码根目录，通常包含 `project/`、`source/` 和可选的 `res/`。支持目录选择和拖拽。选择后会自动根据路径最后一级目录名预填 `Module` 和 `Package`，如果这两个字段已经手动填写则不会覆盖。
-- Module：C4D SDK 模块名，例如 `postwatermark`。2026 CMake SDK 构建时，包含空格的模块名会在内部转换为无空格 target，例如 `Boghma WaterMark` 会按 `Boghma_WaterMark` 构建。
-- Package：发布包名称，也是输出插件目录名称。
+- Plugin Root：插件源码根目录，通常包含 `project/`、`source/` 和可选的 `res/`。支持目录选择和拖拽。选择后会自动根据路径最后一级目录名预填 `Package`。
+- Package：发布包名称、内部 SDK 模块名和输出插件目录名称。选择 Plugin Root 时会自动根据目录名填充；手动修改 Package 后，内部模块名会同步更新。2026 CMake SDK 构建时，包含空格的名称会在内部转换为无空格 target，例如 `Boghma WaterMark` 会按 `Boghma_WaterMark` 构建；如果插件根目录内只有一个嵌套 SDK 模块，例如 `BackHighlight/draw.back/project/projectdefinition.txt`，会自动改用 `draw.back` 作为实际 CMake target。
 - C4D Versions：由 SDK Sources 中的起始版本自动生成的版本标签。自动选择只包含本地已解析的 SDK root、SDK 压缩包或本机 `sdk.zip`，例如没有安装或配置 2025 时，构建队列会跳过 2025。
 - Configuration：构建模式，可选 `Debug`、`Release` 或 `Both`。
 - Package Mode：打包模式，可选 `Merged`、`Per Version` 或 `Both`。
@@ -34,9 +33,21 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 - Clean：打包前清理旧输出目录。
 - Refresh SDK：重新解压或下载 SDK 缓存。
 - Build：解析 SDK、配置 CMake、构建模块并打包产物。
+- Add to Queue：把当前 `Plugin Root`、`Package`、`C4D Versions`、构建配置、打包模式和输出设置保存为一个队列项。随后可以切换到另一个插件目录，再加入新的队列项。编辑队列项时，此按钮会变为更新队列项。
+- Run Queue：按队列顺序逐个编译插件。每个队列项仍会编译它自己的多个 C4D 版本，因此可以一次性完成“多个插件 × 多个版本”的发布构建。
+- Clear Queue：清空尚未运行或已完成的队列记录。
 - Resolve SDKs：只解析 SDK 来源并刷新 SDK Matrix。
 - Refresh Environment：重新检测 CMake、平台编译器、系统 SDK 和 SDK 配置。
-- Cancel：取消当前构建任务标记。
+- Cancel：请求停止当前构建任务标记。已经启动的 CMake 子进程不会被强制杀死；队列模式下，当前构建结束后不会继续后续队列项。
+
+## 队列模式
+
+- 队列项会复制加入队列时的完整构建参数，后续修改左侧表单不会影响已经加入的队列。
+- 每个队列项显示插件名、版本标签、构建配置、打包模式和当前状态。
+- 点击队列项的编辑按钮会把该项参数载入左侧表单，修改后点击更新队列项保存；上下箭头可以调整队列顺序。
+- 队列按顺序串行执行，避免多个 CMake/SDK 准备流程同时写入同一缓存目录。
+- 如果某个队列项构建失败，队列会停止，方便先查看日志并修复对应插件。
+- 构建日志会连续记录整个队列流程，并在每个队列项开始时写入插件名和版本列表。
 
 ## 构建日志
 
@@ -47,15 +58,15 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 - 自动滚动：开启时新日志会自动滚动到底部；关闭后可以停留在历史日志位置排查。
 - 复制日志和另存日志会导出当前筛选后的日志内容，格式包含时间、等级和类别。
 
-## Output Preview
+## 产物
 
-右侧 Output Preview 会根据当前 Package、C4D Versions、Configuration、Package Mode、Output Dir 和 Zip 设置生成文件树预览。它不会写入文件，只用于在构建前确认将生成的文件夹、Windows 的 `.xdl64` 或 macOS 的 `.xlib` 二进制文件、`res` 资源复制位置和 zip 包结构。
+产物标签页会显示当前构建生成的包目录和 zip 文件。点击 Open 可以在系统文件管理器中打开对应产物位置。
 
 ## 注意事项
 
 - 当前版本支持 Windows 和 macOS 构建流程。
 - Windows 构建仍需要本机安装 CMake、Visual Studio 2022 和对应 SDK；macOS 构建需要 CMake、Xcode 16、Clang 和 Python 3.8。
 - 路径输入既可以手动输入，也可以点击文件夹按钮选择，或将文件/目录拖拽到输入框区域。
-- 如果拖入或选择的 Plugin Root 是 `.../MyPlugin`，并且 `Module` 和 `Package` 还是空的，它们会自动填成 `MyPlugin`。
+- 如果拖入或选择的 Plugin Root 是 `.../MyPlugin`，Package 会自动填成 `MyPlugin`。
 - 构建日志和后端错误保留原始英文诊断信息，便于复制到 SDK 文档、CMake 或编译器错误搜索中排查。
 - 取消任务不会强制杀死已经启动的 CMake 子进程。
