@@ -50,11 +50,9 @@ Required:
 
 - `TAURI_SIGNING_PRIVATE_KEY`: the full contents of `C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key`
 
-Optional:
+Required:
 
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: only needed if the signing key was generated with a password
-
-The current generated key has no password, so the password secret and workflow environment variable must be omitted.
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password for the current updater signing key
 
 ## Release Process
 
@@ -74,8 +72,8 @@ vpr tauri:check
 Create and push a tag:
 
 ```bash
-git tag v0.1.6
-git push origin v0.1.6
+git tag v0.1.7
+git push origin v0.1.7
 ```
 
 GitHub Actions will:
