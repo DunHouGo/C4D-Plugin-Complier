@@ -1,5 +1,10 @@
 # 更新日志
 
+## 2026-06-22 v0.1.6
+
+- 移除 Release workflow 中空的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 环境变量，避免无密码 updater key 被当作空密码 key 解码。
+- 将应用版本提升到 `0.1.6`，用于重新触发正式 GitHub Release 构建。
+
 ## 2026-06-22 v0.1.5
 
 - 重新生成无密码 Tauri updater signing key，并同步新的公开 `pubkey` 到 `tauri.conf.json`。

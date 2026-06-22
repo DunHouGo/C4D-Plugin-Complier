@@ -89,13 +89,13 @@ Before the first release, add this GitHub Actions secret:
 
 - `TAURI_SIGNING_PRIVATE_KEY`: contents of `C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key`
 
-`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` is optional because the current local updater key was generated without a password.
+Do not set `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for the current updater key because it was generated without a password.
 
 To publish a release:
 
 ```bash
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 The updater endpoint is configured as:

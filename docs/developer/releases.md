@@ -54,7 +54,7 @@ Optional:
 
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: only needed if the signing key was generated with a password
 
-The current generated key has no password, so the password secret can be omitted.
+The current generated key has no password, so the password secret and workflow environment variable must be omitted.
 
 ## Release Process
 
@@ -74,8 +74,8 @@ vpr tauri:check
 Create and push a tag:
 
 ```bash
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 GitHub Actions will:

@@ -89,13 +89,13 @@ vpr tauri build --no-bundle
 
 - `TAURI_SIGNING_PRIVATE_KEY`：`C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key` 的文件内容
 
-当前本地 updater 密钥没有设置密码，所以 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 可以不填。
+当前 updater 密钥没有设置密码，所以不要设置 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`。
 
 发布版本：
 
 ```bash
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 自动更新端点已经配置为：
