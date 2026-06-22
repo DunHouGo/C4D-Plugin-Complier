@@ -11,8 +11,10 @@ describe('CompilerStore', () => {
       request: defaultBuildRequest,
       artifacts: [],
       buildQueue: [],
+      buildQueuePresets: [],
       sdkStartVersion: DEFAULT_SDK_START_VERSION,
     })
+    window.localStorage.clear()
   })
 
   it('detects module and package names from plugin root', () => {
@@ -148,5 +150,64 @@ describe('CompilerStore', () => {
     removeBuildQueueItem(firstId)
 
     expect(useCompilerStore.getState().buildQueue).toHaveLength(1)
+  })
+
+  it('resets queued builds to run them again', () => {
+    const { addBuildQueueItem, resetBuildQueue, updateBuildQueueItem } =
+      useCompilerStore.getState()
+
+    const id = addBuildQueueItem({
+      ...defaultBuildRequest,
+      package_name: 'Watermark',
+    })
+    updateBuildQueueItem(id, {
+      status: 'failed',
+      message: 'SDK failed',
+      jobId: 'build-1',
+    })
+
+    resetBuildQueue()
+
+    expect(useCompilerStore.getState().buildQueue[0]).toMatchObject({
+      status: 'queued',
+      message: null,
+      jobId: null,
+    })
+  })
+
+  it('saves and applies build queue presets', () => {
+    const { addBuildQueueItem, applyBuildQueuePreset, saveBuildQueuePreset } =
+      useCompilerStore.getState()
+
+    addBuildQueueItem({
+      ...defaultBuildRequest,
+      package_name: 'BackHighlight',
+      versions: ['2025', '2026'],
+    })
+    addBuildQueueItem({
+      ...defaultBuildRequest,
+      package_name: 'Boghma WaterMark',
+      versions: ['2026'],
+    })
+
+    const presetId = saveBuildQueuePreset('Paid release queue')
+    useCompilerStore.setState({ buildQueue: [] })
+    applyBuildQueuePreset(presetId ?? '')
+
+    expect(useCompilerStore.getState().buildQueuePresets[0]).toMatchObject({
+      name: 'Paid release queue',
+    })
+    expect(useCompilerStore.getState().buildQueue).toHaveLength(2)
+    expect(useCompilerStore.getState().buildQueue[0]).toMatchObject({
+      status: 'queued',
+      message: null,
+      jobId: null,
+      request: {
+        package_name: 'BackHighlight',
+      },
+    })
+    expect(useCompilerStore.getState().buildQueue[0]?.request.versions).toEqual(
+      ['2025', '2026']
+    )
   })
 })

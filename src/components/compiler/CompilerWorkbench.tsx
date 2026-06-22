@@ -16,6 +16,7 @@ import {
   ListPlus,
   Play,
   RefreshCw,
+  RotateCcw,
   Save,
   Square,
   Trash2,
@@ -87,7 +88,9 @@ export function CompilerWorkbench() {
   const setArtifacts = useCompilerStore(state => state.setArtifacts)
   const addArtifact = useCompilerStore(state => state.addArtifact)
   const buildQueue = useCompilerStore(state => state.buildQueue)
+  const buildQueuePresets = useCompilerStore(state => state.buildQueuePresets)
   const addBuildQueueItem = useCompilerStore(state => state.addBuildQueueItem)
+  const resetBuildQueue = useCompilerStore(state => state.resetBuildQueue)
   const removeBuildQueueItem = useCompilerStore(
     state => state.removeBuildQueueItem
   )
@@ -98,6 +101,21 @@ export function CompilerWorkbench() {
   )
   const updateBuildQueueItemRequest = useCompilerStore(
     state => state.updateBuildQueueItemRequest
+  )
+  const saveBuildQueuePreset = useCompilerStore(
+    state => state.saveBuildQueuePreset
+  )
+  const createBuildQueuePreset = useCompilerStore(
+    state => state.createBuildQueuePreset
+  )
+  const renameBuildQueuePreset = useCompilerStore(
+    state => state.renameBuildQueuePreset
+  )
+  const applyBuildQueuePreset = useCompilerStore(
+    state => state.applyBuildQueuePreset
+  )
+  const removeBuildQueuePreset = useCompilerStore(
+    state => state.removeBuildQueuePreset
   )
   const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
   const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
@@ -112,6 +130,8 @@ export function CompilerWorkbench() {
   const [outputTab, setOutputTab] = useState<OutputTab>('logs')
   const [autoScrollLogs, setAutoScrollLogs] = useState(true)
   const [logActionMessage, setLogActionMessage] = useState<string | null>(null)
+  const [selectedQueuePresetId, setSelectedQueuePresetId] = useState('')
+  const [queuePresetName, setQueuePresetName] = useState('')
   const [progress, setProgress] = useState<BuildProgressEvent | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [runningQueueItemId, setRunningQueueItemId] = useState<string | null>(
@@ -179,6 +199,13 @@ export function CompilerWorkbench() {
   useEffect(() => {
     jobIdRef.current = jobId
   }, [jobId])
+
+  useEffect(() => {
+    const preset = buildQueuePresets.find(
+      item => item.id === selectedQueuePresetId
+    )
+    setQueuePresetName(preset?.name ?? '')
+  }, [buildQueuePresets, selectedQueuePresetId])
 
   useEffect(() => {
     if (!autoScrollLogs) return
@@ -374,6 +401,74 @@ export function CompilerWorkbench() {
     setEditingQueueItemId(null)
   }
 
+  function restartQueue() {
+    resetBuildQueue()
+    setRunningQueueItemId(null)
+    runningQueueItemIdRef.current = null
+    setStopQueueAfterCurrent(false)
+    stopQueueAfterCurrentRef.current = false
+  }
+
+  function saveQueuePreset() {
+    const id = saveBuildQueuePreset(
+      queuePresetName,
+      selectedQueuePresetId || undefined
+    )
+    if (!id) return
+    setSelectedQueuePresetId(id)
+    const preset = useCompilerStore
+      .getState()
+      .buildQueuePresets.find(item => item.id === id)
+    setLogs(current => [
+      ...current,
+      systemLog(
+        'info',
+        t('compiler.queue.presetSavedLog', {
+          name: preset?.name ?? t('compiler.queue.presetFallbackName'),
+        })
+      ),
+    ])
+  }
+
+  function createQueuePreset() {
+    const id = createBuildQueuePreset(queuePresetName)
+    setSelectedQueuePresetId(id)
+  }
+
+  function renameSelectedQueuePreset() {
+    if (!selectedQueuePresetId) return
+    renameBuildQueuePreset(selectedQueuePresetId, queuePresetName)
+  }
+
+  function loadQueuePreset() {
+    if (!selectedQueuePresetId) return
+    applyBuildQueuePreset(selectedQueuePresetId)
+    setEditingQueueItemId(null)
+    const preset = useCompilerStore
+      .getState()
+      .buildQueuePresets.find(item => item.id === selectedQueuePresetId)
+    if (!preset) return
+    setLogs(current => [
+      ...current,
+      systemLog(
+        'info',
+        t('compiler.queue.presetLoadedLog', { name: preset.name })
+      ),
+    ])
+  }
+
+  function deleteSelectedQueuePreset() {
+    if (!selectedQueuePresetId) return
+    removeBuildQueuePreset(selectedQueuePresetId)
+    setSelectedQueuePresetId('')
+    setQueuePresetName('')
+  }
+
+  function clearLogs() {
+    setLogs([])
+    setLogActionMessage(null)
+  }
+
   async function startQueuedBuilds() {
     const pendingQueue = useCompilerStore
       .getState()
@@ -482,7 +577,7 @@ export function CompilerWorkbench() {
   }
 
   return (
-    <div className="grid h-full grid-cols-[minmax(320px,390px)_1fr] overflow-hidden">
+    <div className="grid h-full min-w-0 grid-cols-[minmax(380px,420px)_minmax(0,1fr)] overflow-hidden">
       <aside className="flex min-h-0 flex-col overflow-hidden border-r bg-muted/20">
         <div className="border-b px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold">
@@ -622,7 +717,7 @@ export function CompilerWorkbench() {
                 onChange={value => updateRequest({ output_dir: value || null })}
               />
             </Field>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(112px,1fr))] gap-2">
               <Toggle
                 checked={request.zip_enabled}
                 label={t('compiler.toggles.zip')}
@@ -646,7 +741,7 @@ export function CompilerWorkbench() {
                 }
               />
             </div>
-            <div className="flex gap-2 pt-1">
+            <div className="grid grid-cols-[minmax(0,1fr)_repeat(4,36px)] gap-2 pt-1">
               <Button
                 className="flex-1"
                 disabled={state === 'running'}
@@ -714,6 +809,95 @@ export function CompilerWorkbench() {
               </Button>
             </div>
             <section className="rounded-md border bg-background">
+              <div className="flex min-h-10 items-center gap-2 border-b px-3">
+                <Save className="size-4 text-muted-foreground" />
+                <span className="truncate text-sm font-medium">
+                  {t('compiler.panels.queuePresets')}
+                </span>
+              </div>
+              <div className="space-y-2 p-3">
+                <Select
+                  value={selectedQueuePresetId}
+                  onValueChange={setSelectedQueuePresetId}
+                  disabled={
+                    state === 'running' || buildQueuePresets.length === 0
+                  }
+                >
+                  <SelectTrigger
+                    className="h-8 w-full text-xs"
+                    title={t('compiler.actions.selectQueuePreset')}
+                  >
+                    <SelectValue
+                      placeholder={t('compiler.queue.presetSelect')}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {buildQueuePresets.map(preset => (
+                      <SelectItem key={preset.id} value={preset.id}>
+                        {preset.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="h-8 text-xs"
+                  value={queuePresetName}
+                  placeholder={t('compiler.queue.presetNamePlaceholder')}
+                  disabled={state === 'running'}
+                  onChange={event => setQueuePresetName(event.target.value)}
+                  onBlur={renameSelectedQueuePreset}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') {
+                      renameSelectedQueuePreset()
+                      event.currentTarget.blur()
+                    }
+                  }}
+                />
+                <div className="grid grid-cols-4 gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title={t('compiler.actions.newQueuePreset')}
+                    disabled={state === 'running'}
+                    onClick={createQueuePreset}
+                  >
+                    <ListPlus className="size-3.5" />
+                    {t('compiler.actions.newQueuePresetShort')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title={t('compiler.actions.loadQueuePreset')}
+                    disabled={state === 'running' || !selectedQueuePresetId}
+                    onClick={loadQueuePreset}
+                  >
+                    <Play className="size-3.5" />
+                    {t('compiler.actions.loadQueuePresetShort')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title={t('compiler.actions.saveQueuePreset')}
+                    disabled={state === 'running' || buildQueue.length === 0}
+                    onClick={saveQueuePreset}
+                  >
+                    <Save className="size-3.5" />
+                    {t('compiler.actions.saveQueuePresetShort')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    title={t('compiler.actions.removeQueuePreset')}
+                    disabled={state === 'running' || !selectedQueuePresetId}
+                    onClick={deleteSelectedQueuePreset}
+                  >
+                    <Trash2 className="size-3.5" />
+                    {t('compiler.actions.removeQueuePresetShort')}
+                  </Button>
+                </div>
+              </div>
+            </section>
+            <section className="rounded-md border bg-background">
               <div className="flex min-h-10 items-center justify-between gap-2 border-b px-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <ListPlus className="size-4 text-muted-foreground" />
@@ -724,28 +908,39 @@ export function CompilerWorkbench() {
                     {buildQueue.length}
                   </Badge>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    title={t('compiler.actions.runQueue')}
-                    disabled={
-                      state === 'running' ||
-                      !buildQueue.some(item => item.status === 'queued')
-                    }
-                    onClick={() => void startQueuedBuilds()}
-                  >
-                    <Play className="size-3.5" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    title={t('compiler.actions.clearQueue')}
-                    disabled={state === 'running' || buildQueue.length === 0}
-                    onClick={clearQueue}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+                  <div className="grid grid-cols-3 gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      title={t('compiler.actions.restartQueue')}
+                      disabled={state === 'running' || buildQueue.length === 0}
+                      onClick={restartQueue}
+                    >
+                      <RotateCcw className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      title={t('compiler.actions.runQueue')}
+                      disabled={
+                        state === 'running' ||
+                        !buildQueue.some(item => item.status === 'queued')
+                      }
+                      onClick={() => void startQueuedBuilds()}
+                    >
+                      <Play className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      title={t('compiler.actions.clearQueue')}
+                      disabled={state === 'running' || buildQueue.length === 0}
+                      onClick={clearQueue}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="space-y-2 p-3">
@@ -858,7 +1053,7 @@ export function CompilerWorkbench() {
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <div className="grid grid-cols-3 gap-3 border-b p-4">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3 border-b p-4">
           <StatusPanel title={t('compiler.panels.environment')}>
             <ToolLine label="CMake" tool={environment?.cmake} />
             {compilerPlatform === 'Macos' ? (
@@ -1017,6 +1212,16 @@ export function CompilerWorkbench() {
                     />
                     <span>{t('compiler.logs.autoScroll')}</span>
                   </label>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    disabled={logs.length === 0}
+                    title={t('compiler.actions.clearLog')}
+                    onClick={clearLogs}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

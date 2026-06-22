@@ -65,8 +65,9 @@ fn create_merged_package(
     std::fs::create_dir_all(&package_dir)
         .map_err(|error| format!("Failed to create {}: {error}", package_dir.display()))?;
 
-    copy_resources(Path::new(&request.plugin_root), &package_dir)?;
+    let plugin_root = Path::new(&request.plugin_root);
     for (version, configuration, binary) in built_binaries {
+        copy_resources(plugin_root, binary, &package_dir)?;
         let suffix = binary
             .extension()
             .and_then(|value| value.to_str())
@@ -116,7 +117,7 @@ fn create_per_version_packages(
         }
         std::fs::create_dir_all(&package_dir)
             .map_err(|error| format!("Failed to create {}: {error}", package_dir.display()))?;
-        copy_resources(Path::new(&request.plugin_root), &package_dir)?;
+        copy_resources(Path::new(&request.plugin_root), binary, &package_dir)?;
 
         let suffix = binary
             .extension()
@@ -149,17 +150,64 @@ fn create_per_version_packages(
     Ok(artifacts)
 }
 
-fn copy_resources(plugin_root: &Path, package_dir: &Path) -> Result<(), String> {
-    let resource_dir = plugin_root.join("res");
-    if !resource_dir.is_dir() {
-        return Ok(());
-    }
-
+fn copy_resources(plugin_root: &Path, binary: &Path, package_dir: &Path) -> Result<(), String> {
     let target = package_dir.join("res");
     if target.exists() {
         remove_path(&target)?;
     }
-    copy_dir_recursive(&resource_dir, &target)
+
+    if let Some(resource_dir) = find_resource_dir(plugin_root, binary) {
+        copy_dir_recursive(&resource_dir, &target)
+    } else {
+        std::fs::create_dir_all(&target)
+            .map_err(|error| format!("Failed to create {}: {error}", target.display()))
+    }
+}
+
+fn find_resource_dir(plugin_root: &Path, binary: &Path) -> Option<PathBuf> {
+    let direct = plugin_root.join("res");
+    if direct.is_dir() {
+        return Some(direct);
+    }
+
+    let built = binary.parent()?.join("res");
+    if built.is_dir() {
+        return Some(built);
+    }
+
+    find_nested_resource_dir(plugin_root)
+}
+
+fn find_nested_resource_dir(plugin_root: &Path) -> Option<PathBuf> {
+    WalkDir::new(plugin_root)
+        .min_depth(1)
+        .max_depth(5)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_dir())
+        .map(|entry| entry.path().to_path_buf())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|name| name == "res")
+        })
+        .filter(|path| !path_contains_ignored_component(plugin_root, path))
+        .find(|path| is_likely_module_resource_dir(path))
+}
+
+fn is_likely_module_resource_dir(resource_dir: &Path) -> bool {
+    resource_dir.parent().is_some_and(|module_dir| {
+        module_dir.join("project").is_dir() || module_dir.join("source").is_dir()
+    })
+}
+
+fn path_contains_ignored_component(root: &Path, path: &Path) -> bool {
+    path.strip_prefix(root)
+        .ok()
+        .into_iter()
+        .flat_map(|relative| relative.components())
+        .filter_map(|component| component.as_os_str().to_str())
+        .any(|name| matches!(name, ".git" | "build" | "dist" | "node_modules" | "target"))
 }
 
 fn package_folder_name(package_name: &str, version: &str, configuration: &str) -> String {
@@ -199,7 +247,11 @@ fn configuration_suffix(configuration: &str) -> &'static str {
 }
 
 fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
-    for entry in WalkDir::new(source).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(source)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         let relative = entry
             .path()
             .strip_prefix(source)
@@ -288,6 +340,8 @@ fn create_zip_archive(package_dir: &Path) -> Result<PathBuf, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::*;
 
     #[test]
@@ -312,5 +366,107 @@ mod tests {
             package_binary_name("Boghma WaterMark", "2026", "Debug", ".xlib"),
             "Boghma WaterMark 2026_Debug.xlib"
         );
+    }
+
+    #[test]
+    fn per_version_package_copies_nested_module_resources() {
+        let temp = TempTree::new("c4d-package-nested-res");
+        let plugin = temp.path().join("BackHighlight");
+        let module = plugin.join("draw.back");
+        let binary_dir = temp.path().join("build").join("bin").join("Release");
+        let binary = binary_dir.join("draw.back.xdl64");
+        std::fs::create_dir_all(module.join("project")).unwrap();
+        std::fs::create_dir_all(module.join("source")).unwrap();
+        std::fs::create_dir_all(module.join("res").join("description")).unwrap();
+        std::fs::create_dir_all(&binary_dir).unwrap();
+        std::fs::write(module.join("res").join("c4d_symbols.h"), "symbols").unwrap();
+        std::fs::write(
+            module.join("res").join("description").join("drawback.res"),
+            "CONTAINER",
+        )
+        .unwrap();
+        std::fs::write(&binary, "binary").unwrap();
+
+        let request = test_request(&plugin, temp.path().join("dist"));
+        package_outputs(
+            &request,
+            &[("2025".to_string(), "Release".to_string(), binary)],
+        )
+        .unwrap();
+
+        let package = temp.path().join("dist").join("BackHighlight_2025");
+        assert!(package.join("BackHighlight 2025.xdl64").is_file());
+        assert!(package.join("res").join("c4d_symbols.h").is_file());
+        assert!(package
+            .join("res")
+            .join("description")
+            .join("drawback.res")
+            .is_file());
+    }
+
+    #[test]
+    fn per_version_package_always_creates_resource_folder() {
+        let temp = TempTree::new("c4d-package-empty-res");
+        let plugin = temp.path().join("Plugin");
+        let binary = temp.path().join("build").join("Plugin.xdl64");
+        std::fs::create_dir_all(&plugin).unwrap();
+        std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        std::fs::write(&binary, "binary").unwrap();
+
+        let request = test_request(&plugin, temp.path().join("dist"));
+        package_outputs(
+            &request,
+            &[("2026".to_string(), "Release".to_string(), binary)],
+        )
+        .unwrap();
+
+        assert!(temp
+            .path()
+            .join("dist")
+            .join("BackHighlight_2026")
+            .join("res")
+            .is_dir());
+    }
+
+    fn test_request(plugin_root: &Path, output_dir: PathBuf) -> BuildRequest {
+        BuildRequest {
+            plugin_root: plugin_root.display().to_string(),
+            module_name: "BackHighlight".to_string(),
+            package_name: "BackHighlight".to_string(),
+            versions: vec!["2026".to_string()],
+            configuration: crate::types::BuildConfiguration::Release,
+            sdk_source: crate::types::SdkSourceMode::ConfiguredThenInstalledThenOfficial,
+            package_mode: PackageMode::PerVersion,
+            zip_enabled: false,
+            clean_output: true,
+            refresh_sdk_cache: false,
+            output_dir: Some(output_dir.display().to_string()),
+        }
+    }
+
+    struct TempTree {
+        path: PathBuf,
+    }
+
+    impl TempTree {
+        fn new(name: &str) -> Self {
+            let millis = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_millis();
+            let path = std::env::temp_dir().join(format!("{name}-{millis}"));
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempTree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
     }
 }

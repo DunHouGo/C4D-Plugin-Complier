@@ -11,7 +11,12 @@ export function MainWindowContent({
   className,
 }: MainWindowContentProps) {
   return (
-    <div className={cn('flex h-full flex-col bg-background', className)}>
+    <div
+      className={cn(
+        'flex h-full min-w-0 flex-1 flex-col bg-background',
+        className
+      )}
+    >
       {children || <CompilerWorkbench />}
     </div>
   )

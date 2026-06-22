@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(target_os = "macos")]
 use serde::Deserialize;
 use walkdir::WalkDir;
 
@@ -14,6 +15,7 @@ use crate::compiler::sdk::{
 };
 use crate::compiler::{
     current_build_platform, local_data_root, parse_version_list, require_dir, sanitize_path_name,
+    select_build_preset,
 };
 use crate::types::{BuildArtifact, BuildLogEvent, BuildProgressEvent, BuildRequest};
 
@@ -27,9 +29,9 @@ pub fn execute_build(
     progress: ProgressCallback<'_>,
 ) -> Result<Vec<BuildArtifact>, String> {
     let build_platform = current_build_platform();
-    let preset = build_platform
-        .preset
-        .ok_or_else(|| "C4D builds are currently supported on Windows and macOS".to_string())?;
+    if build_platform.preset.is_none() {
+        return Err("C4D builds are currently supported on Windows and macOS".to_string());
+    }
     let binary_extension = build_platform
         .binary_extension
         .ok_or_else(|| "No binary extension is configured for this platform".to_string())?;
@@ -56,12 +58,16 @@ pub fn execute_build(
         if is_cmake_sdk_root(&sdk_root) {
             let cmake = detect_cmake_path().ok_or_else(|| "CMake was not found".to_string())?;
             let presets = read_configure_presets(&sdk_root)?;
-            if !presets.iter().any(|name| name == preset) {
-                return Err(format!(
-                    "SDK {version} does not provide preset {preset}. Available presets: {}",
+            let preset = select_build_preset(&build_platform, &presets).ok_or_else(|| {
+                let expected = build_platform
+                    .preset
+                    .unwrap_or("a supported platform preset");
+                format!(
+                    "SDK {version} does not provide preset {expected}. Available presets: {}",
                     presets.join(", ")
-                ));
-            }
+                )
+            })?;
+            log_sdk(log, job_id, &format!("Using CMake preset '{preset}'"));
 
             let module_alias_name = cmake_target_name(&request.module_name);
             let build_module_name = resolve_cmake_build_module_name(
@@ -846,6 +852,7 @@ fn find_legacy_plugin_binary(
         })
 }
 
+#[cfg(target_os = "macos")]
 fn run_command_with_path_prefix(
     program: &str,
     args: &[String],

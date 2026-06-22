@@ -13,6 +13,13 @@ export interface BuildQueueItem {
   jobId: string | null
 }
 
+export interface BuildQueuePreset {
+  id: string
+  name: string
+  requests: BuildRequest[]
+  createdAt: string
+}
+
 export const defaultBuildRequest: BuildRequest = {
   plugin_root: '',
   module_name: '',
@@ -31,11 +38,13 @@ interface CompilerState {
   request: BuildRequest
   artifacts: BuildArtifact[]
   buildQueue: BuildQueueItem[]
+  buildQueuePresets: BuildQueuePreset[]
   sdkStartVersion: string
   setRequest: (request: BuildRequest) => void
   setArtifacts: (artifacts: BuildArtifact[]) => void
   addArtifact: (artifact: BuildArtifact) => void
   addBuildQueueItem: (request: BuildRequest) => string
+  resetBuildQueue: () => void
   removeBuildQueueItem: (id: string) => void
   clearBuildQueue: () => void
   moveBuildQueueItem: (id: string, direction: 'up' | 'down') => void
@@ -49,6 +58,11 @@ interface CompilerState {
   updatePluginRoot: (pluginRoot: string) => void
   setSdkStartVersion: (version: string, availableVersions: string[]) => void
   setBuildVersions: (versions: string[]) => void
+  saveBuildQueuePreset: (name?: string, id?: string) => string | null
+  createBuildQueuePreset: (name?: string) => string
+  renameBuildQueuePreset: (id: string, name: string) => void
+  applyBuildQueuePreset: (id: string) => void
+  removeBuildQueuePreset: (id: string) => void
 }
 
 export const useCompilerStore = create<CompilerState>()(
@@ -57,6 +71,7 @@ export const useCompilerStore = create<CompilerState>()(
       request: defaultBuildRequest,
       artifacts: [],
       buildQueue: [],
+      buildQueuePresets: loadBuildQueuePresets(),
       sdkStartVersion: DEFAULT_SDK_START_VERSION,
 
       setRequest: request => set({ request }, undefined, 'setRequest'),
@@ -94,6 +109,20 @@ export const useCompilerStore = create<CompilerState>()(
         )
         return id
       },
+
+      resetBuildQueue: () =>
+        set(
+          state => ({
+            buildQueue: state.buildQueue.map(item => ({
+              ...item,
+              status: 'queued',
+              message: null,
+              jobId: null,
+            })),
+          }),
+          undefined,
+          'resetBuildQueue'
+        ),
 
       removeBuildQueueItem: id =>
         set(
@@ -215,6 +244,115 @@ export const useCompilerStore = create<CompilerState>()(
           undefined,
           'setSdkStartVersion'
         ),
+
+      saveBuildQueuePreset: (name, id) => {
+        let presetId: string | null = null
+        set(
+          state => {
+            if (state.buildQueue.length === 0) {
+              return state
+            }
+
+            const existingPreset = id
+              ? state.buildQueuePresets.find(preset => preset.id === id)
+              : null
+            const nextPreset = createBuildQueuePreset(
+              name?.trim() ||
+                existingPreset?.name ||
+                `Queue preset ${state.buildQueuePresets.length + 1}`,
+              state.buildQueue.map(item => item.request),
+              existingPreset?.id,
+              existingPreset?.createdAt
+            )
+            presetId = nextPreset.id
+            const buildQueuePresets = [
+              nextPreset,
+              ...state.buildQueuePresets.filter(
+                preset =>
+                  preset.id !== nextPreset.id && preset.name !== nextPreset.name
+              ),
+            ]
+            saveBuildQueuePresets(buildQueuePresets)
+            return { buildQueuePresets }
+          },
+          undefined,
+          'saveBuildQueuePreset'
+        )
+        return presetId
+      },
+
+      createBuildQueuePreset: name => {
+        let presetId = ''
+        set(
+          state => {
+            const nextPreset = createBuildQueuePreset(
+              name?.trim() ||
+                `Queue preset ${state.buildQueuePresets.length + 1}`,
+              state.buildQueue.map(item => item.request)
+            )
+            presetId = nextPreset.id
+            const buildQueuePresets = [nextPreset, ...state.buildQueuePresets]
+            saveBuildQueuePresets(buildQueuePresets)
+            return { buildQueuePresets }
+          },
+          undefined,
+          'createBuildQueuePreset'
+        )
+        return presetId
+      },
+
+      renameBuildQueuePreset: (id, name) =>
+        set(
+          state => {
+            const trimmedName = name.trim()
+            if (!trimmedName) {
+              return state
+            }
+
+            const buildQueuePresets = state.buildQueuePresets.map(preset =>
+              preset.id === id ? { ...preset, name: trimmedName } : preset
+            )
+            saveBuildQueuePresets(buildQueuePresets)
+            return { buildQueuePresets }
+          },
+          undefined,
+          'renameBuildQueuePreset'
+        ),
+
+      applyBuildQueuePreset: id =>
+        set(
+          state => {
+            const preset = state.buildQueuePresets.find(item => item.id === id)
+            if (!preset) {
+              return state
+            }
+
+            return {
+              buildQueue: preset.requests.map(request => ({
+                id: createBuildQueueItemId(),
+                request: cloneBuildRequest(request),
+                status: 'queued',
+                message: null,
+                jobId: null,
+              })),
+            }
+          },
+          undefined,
+          'applyBuildQueuePreset'
+        ),
+
+      removeBuildQueuePreset: id =>
+        set(
+          state => {
+            const buildQueuePresets = state.buildQueuePresets.filter(
+              preset => preset.id !== id
+            )
+            saveBuildQueuePresets(buildQueuePresets)
+            return { buildQueuePresets }
+          },
+          undefined,
+          'removeBuildQueuePreset'
+        ),
     }),
     {
       name: 'compiler-store',
@@ -267,4 +405,66 @@ function moveQueueItem(
 
 function createBuildQueueItemId(): string {
   return `queue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function createBuildQueuePresetId(): string {
+  return `preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function createBuildQueuePreset(
+  name: string,
+  requests: BuildRequest[],
+  id = createBuildQueuePresetId(),
+  createdAt = new Date().toISOString()
+): BuildQueuePreset {
+  return {
+    id,
+    name,
+    requests: requests.map(cloneBuildRequest),
+    createdAt,
+  }
+}
+
+const BUILD_QUEUE_PRESETS_KEY = 'c4d-plugin-compiler.buildQueuePresets'
+
+function loadBuildQueuePresets(): BuildQueuePreset[] {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  try {
+    const text = window.localStorage.getItem(BUILD_QUEUE_PRESETS_KEY)
+    if (!text) {
+      return []
+    }
+    const value = JSON.parse(text) as BuildQueuePreset[]
+    if (!Array.isArray(value)) {
+      return []
+    }
+    return value.filter(isBuildQueuePreset)
+  } catch {
+    return []
+  }
+}
+
+function saveBuildQueuePresets(presets: BuildQueuePreset[]) {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.localStorage.setItem(BUILD_QUEUE_PRESETS_KEY, JSON.stringify(presets))
+}
+
+function isBuildQueuePreset(value: unknown): value is BuildQueuePreset {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  const preset = value as BuildQueuePreset
+  return (
+    typeof preset.id === 'string' &&
+    typeof preset.name === 'string' &&
+    typeof preset.createdAt === 'string' &&
+    Array.isArray(preset.requests)
+  )
 }

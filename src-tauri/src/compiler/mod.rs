@@ -11,7 +11,9 @@ use std::path::PathBuf;
 use crate::types::CompilerPlatform;
 
 pub const APP_CACHE_FOLDER: &str = "C4DPluginCompiler";
-pub const DEFAULT_PRESET_WINDOWS: &str = "windows_vs2022_v143";
+pub const DEFAULT_PRESET_WINDOWS: &str = "windows_vs2022_v143_x64";
+const LEGACY_PRESET_WINDOWS: &str = "windows_vs2022_v143";
+const WINDOWS_PRESET_PRIORITY: &[&str] = &[DEFAULT_PRESET_WINDOWS, LEGACY_PRESET_WINDOWS];
 pub const DEFAULT_PRESET_MACOS: &str = "macos_universal_xcode";
 
 pub struct BuildPlatform {
@@ -50,6 +52,27 @@ pub fn current_build_platform() -> BuildPlatform {
         preset: None,
         binary_extension: None,
     }
+}
+
+pub fn select_build_preset<'a>(
+    build_platform: &BuildPlatform,
+    presets: &'a [String],
+) -> Option<&'a str> {
+    if matches!(build_platform.platform, CompilerPlatform::Windows) {
+        return WINDOWS_PRESET_PRIORITY.iter().find_map(|candidate| {
+            presets
+                .iter()
+                .find(|preset| preset.as_str() == *candidate)
+                .map(String::as_str)
+        });
+    }
+
+    build_platform.preset.and_then(|expected| {
+        presets
+            .iter()
+            .find(|preset| preset.as_str() == expected)
+            .map(String::as_str)
+    })
 }
 
 pub fn local_data_root() -> Result<PathBuf, String> {
@@ -105,7 +128,7 @@ pub fn require_file(path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_path_name;
+    use super::{current_build_platform, sanitize_path_name, DEFAULT_PRESET_WINDOWS};
 
     #[test]
     fn sanitizes_path_names() {
@@ -120,5 +143,26 @@ mod tests {
             ["2024", "2025", "2026"]
         );
         assert_eq!(super::parse_version_list("2025, 2026"), ["2025", "2026"]);
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn selects_current_windows_cmake_preset() {
+        let build_platform = current_build_platform();
+        let sdk_2026_presets = vec![
+            "linux_ninja".to_string(),
+            DEFAULT_PRESET_WINDOWS.to_string(),
+            "windows_vs2022_clangcl_x64".to_string(),
+        ];
+        assert_eq!(
+            super::select_build_preset(&build_platform, &sdk_2026_presets),
+            Some(DEFAULT_PRESET_WINDOWS)
+        );
+
+        let legacy_presets = vec!["windows_vs2022_v143".to_string()];
+        assert_eq!(
+            super::select_build_preset(&build_platform, &legacy_presets),
+            Some("windows_vs2022_v143")
+        );
     }
 }
