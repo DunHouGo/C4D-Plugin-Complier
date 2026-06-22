@@ -1,117 +1,107 @@
-# Tauri React 模板
+# C4D Plugin Compiler
 
-![alt text](images/tauri-destop-starter.png)
 简体中文 | [English](README.md)
 
-一个开箱即用的桌面应用模板，帮助您快速开始构建应用。
+C4D Plugin Compiler 是一个用于 Cinema 4D C++ 插件的桌面编译与打包工具。它可以准备 Maxon C++ SDK 来源，检测本机 Windows 构建环境，执行官方 CMake preset 构建流程，并把编译后的插件整理为可直接在 Cinema 4D 中指认的插件文件夹。
 
-项目用于构建生产级 **Tauri v2**、**React** 和 **TypeScript** 应用。模板提供明确的工程约定，方便开发者和 AI 编程代理从一开始就按稳定架构协作。
+应用基于 Tauri 2、Rust、React 和 TypeScript 构建。当前工作流主要面向 Cinema 4D 2024.4 及之后版本的 Windows 构建。
 
-> 项目由Danny的[tauri-template衍生](https://github.com/dannysmith/tauri-template)，因为Danny的项目构建越来越复杂，我希望初始模板更简单实用，一些依赖，后续开发可以按需添加。如果你寻找更加复杂的工业级模板，请看看Danny的工作。
+## 功能
 
-## 为什么使用这个模板？
+- 管理一个共享 SDK 根目录，用于 Cinema 4D 2024.4、2025 和 2026 SDK。
+- 检测本机 Cinema 4D 安装，并映射到匹配的 Maxon C++ SDK 版本。
+- 缺少 SDK 时自动下载或复用已缓存的 SDK 压缩包。
+- 构建前检测 CMake、Visual Studio 2022、Windows SDK 和 SDK 可用性。
+- 通过 Maxon 官方 CMake preset 工作流构建 C++ 插件。
+- 生成合并包、分版本包和可选 zip 发布包。
+- 复制插件资源文件，确保每个输出文件夹都可以直接作为 Cinema 4D 插件选择。
+- 构建前预览输出文件树。
 
-很多 Tauri starter 只提供空白项目。这个模板提供的是一个已经跑通的应用骨架，并带有清晰的工程模式：
+## 环境要求
 
-- **类型安全的 Rust-TypeScript 桥接**：通过 tauri-specta 生成类型绑定。
-- **工具链约束性能模式**：使用 Vite+、Oxlint、Oxfmt、React Compiler lint 和测试保障质量。
-- **跨平台准备**：包含平台化标题栏、窗口控制和原生菜单集成。
-- **内置国际化**：提供 `en-US` 和 `zh-CN` 语言包，并保留面向未来语言的 RTL 布局模式。
-
-## 技术栈
-
-| 层级 | 技术                                              |
-| ---- | ------------------------------------------------- |
-| 前端 | React 19、TypeScript、Vite 8、Vite+               |
-| UI   | shadcn/ui v4、Tailwind CSS v4、Lucide React       |
-| 状态 | Zustand v5、TanStack Query v5                     |
-| 后端 | Tauri v2、Rust                                    |
-| 测试 | Vitest v4、Testing Library                        |
-| 质量 | Vite+、Oxlint、Oxfmt、React Compiler lint、clippy |
-
-## 已内置功能
-
-### 核心功能
-
-- **命令面板**：通过 `Cmd+K` 打开可搜索的命令启动器，支持键盘导航。
-- **键盘快捷键**：平台感知的快捷键系统，并接入菜单。
-- **原生菜单**：使用 JavaScript 构建 File、Edit、View 等菜单，并支持国际化。
-- **偏好设置系统**：带 Rust 端持久化、React hooks 和类型安全访问。
-- **可折叠侧边栏**：左右侧边栏使用 resizable panels，并支持状态持久化。
-- **主题系统**：支持浅色、深色和跟随系统。
-- **通知系统**：支持应用内 toast 和系统原生通知。
-- **自动更新**：已集成 Tauri updater 和 GitHub Releases 工作流。
-- **日志**：Rust 和 TypeScript 侧都有结构化日志工具。
-- **崩溃恢复**：为异常退出后的紧急数据保存提供基础能力。
-
-### 架构模式
-
-- **三层状态管理**：`useState`（组件局部）-> `Zustand`（全局 UI）-> `TanStack Query`（持久化数据）。
-- **事件驱动的 Rust-React 桥接**：菜单、快捷键和命令面板统一走命令系统。
-- **React Compiler**：自动处理 memoization，默认不需要手写 `useMemo` 或 `useCallback`。
-
-### 跨平台
-
-| 平台    | 标题栏                  | 窗口控制     | 打包格式    |
-| ------- | ----------------------- | ------------ | ----------- |
-| macOS   | 自定义标题栏和 vibrancy | 红绿灯按钮   | `.dmg`      |
-| Windows | 自定义标题栏            | 右侧窗口按钮 | `.msi`      |
-| Linux   | 原生标题栏和工具栏      | 原生控件     | `.AppImage` |
-
-模板已经包含平台检测工具、平台化 UI 文案，以及面向 Tauri 的跨平台配置。
-
-### 开发体验
-
-- **类型安全的 Tauri 命令**：tauri-specta 从 Rust 命令生成 TypeScript 绑定，提供自动补全和编译期检查。
-- **静态分析**：Vite+ 从 `vite.config.ts` 集中运行 Oxlint、Oxfmt、React Compiler lint、TypeScript 和 Vitest。
-- **统一质量门禁**：`vpr check:all` 会运行前端检查、Rust 格式检查、clippy 和测试。
-- **测试模式**：Vitest 已配置 Tauri 命令 mock。
-
-## 已包含的 Tauri 插件
-
-| 插件              | 作用                            |
-| ----------------- | ------------------------------- |
-| single-instance   | 防止多个应用实例                |
-| window-state      | 记住窗口位置和大小              |
-| fs                | 文件系统访问                    |
-| dialog            | 原生打开/保存对话框             |
-| notification      | 系统通知                        |
-| clipboard-manager | 剪贴板访问                      |
-| updater           | 应用内自动更新                  |
-| opener            | 使用系统默认应用打开 URL 或文件 |
-
-## 面向 AI 协作
-
-这个模板适合与 AI 编程代理协作：
-
-- `docs/developer/` 提供架构、状态管理、Tauri 命令、测试、发布等开发文档。
-- `AGENTS.md` 记录代理工作约定，当前命令入口以 Vite+ 的 `vp` 和 `vpr` 为准。
-- React 代码位于 `src/`，Rust 代码位于 `src-tauri/src/`，目录边界清晰，方便定位和修改。
+- Windows
+- Node.js 20+
+- Rust stable
+- CMake
+- Visual Studio 2022 和 MSVC C++ 构建工具
+- Windows SDK
+- 需要本机 SDK 检测时安装 Cinema 4D 2024.4 或之后版本
 
 ## 快速开始
 
-详见 [Using This Template](docs/USING_THIS_TEMPLATE.md)。
-
 ```bash
-# 前置要求：Node.js 20+、Rust stable
-# 平台依赖请参考 https://tauri.app/start/prerequisites/
-
-git clone <your-repo>
-cd your-app
 vp install
 vpr dev
 ```
 
-## 文档
+发布构建：
 
-- **[开发文档](docs/developer/)**：架构、模式和详细指南。
-- **[用户指南](docs/userguide/)**：面向最终用户的文档模板。
-- **[模板使用说明](docs/USING_THIS_TEMPLATE.md)**：初始化和工作流说明。
+```bash
+vpr tauri build
+```
+
+只做构建检查、不生成安装包：
+
+```bash
+vpr tauri build --no-bundle
+```
+
+## 基本流程
+
+1. 在 SDK Sources 面板设置 **SDK Root**。
+2. 点击 **Auto Detect** 或 **Refresh** 检测本机 Cinema 4D 安装和可用 SDK。
+3. 设置 **Plugin Root**、**Module**、**Package**、目标 C4D 版本、构建配置、打包模式和输出目录。
+4. 在 **Output Preview** 中确认输出目录结构。
+5. 点击 **Build** 解析 SDK、编译模块并打包产物。
+
+详细用户指南见 [readme-cn.md](readme-cn.md)。
+
+## 项目结构
+
+| 路径 | 说明 |
+| ---- | ---- |
+| `src/` | React 前端源码 |
+| `src-tauri/` | Rust 和 Tauri 后端源码 |
+| `locales/` | 应用本地化文件 |
+| `configs/` | 本地配置模板和 SDK 来源配置 |
+| `docs/developer/` | 架构和开发文档 |
+
+## 开发命令
+
+项目使用 Vite+ 命令入口。
+
+```bash
+vp install
+vpr typecheck
+vpr test:run
+vpr rust:fmt:check
+vpr rust:clippy
+vpr tauri build --no-bundle
+```
+
+## GitHub 发布和自动更新
+
+推送 `v*` tag 时，GitHub Actions 会构建 Windows 发布产物。发布草稿会包含 MSI/NSIS 安装包和 Tauri updater 文件，其中包括 `latest.json`。
+
+首次发布前，在 GitHub Actions Secrets 中添加：
+
+- `TAURI_SIGNING_PRIVATE_KEY`：`C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key` 的文件内容
+
+当前本地 updater 密钥没有设置密码，所以 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 可以不填。
+
+发布版本：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+自动更新端点已经配置为：
+
+```text
+https://github.com/DunHouGo/C4D-Plugin-Complier/releases/latest/download/latest.json
+```
 
 ## 许可证
 
-[MIT](LICENSE.md)
-
----
-
-Built with [Tauri](https://tauri.app) | [shadcn/ui](https://ui.shadcn.com) | [React](https://react.dev) | [TypeScript](https://www.typescriptlang.org) | [Vite+](https://plu.dev)
+本项目使用 [GNU General Public License v2.0 only](LICENSE.md) 许可证。

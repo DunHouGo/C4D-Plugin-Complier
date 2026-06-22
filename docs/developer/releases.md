@@ -1,185 +1,102 @@
 # Releases
 
-Release process, version management, and auto-update system.
+Release process, GitHub Actions packaging, and Tauri updater setup for C4D Plugin Compiler.
 
 ## Overview
 
-The release system provides:
+The release flow provides:
 
-- Automated GitHub Actions workflow for building releases
-- Version management script for updating all version files
-- Auto-updater for seamless user updates
-- Cross-platform builds (macOS, Windows, Linux)
+- Windows release builds through GitHub Actions.
+- MSI and NSIS installers uploaded to a GitHub Release draft.
+- Signed Tauri updater artifacts.
+- `latest.json` uploaded to the latest GitHub Release for in-app updates.
 
-## Initial Setup
+## Current Configuration
 
-### 1. Generate Signing Keys
+- Repository: `DunHouGo/C4D-Plugin-Complier`
+- Updater endpoint: `https://github.com/DunHouGo/C4D-Plugin-Complier/releases/latest/download/latest.json`
+- Workflow: `.github/workflows/release.yml`
+- Trigger: pushed tags matching `v*`
+- Bundle artifacts: `msi,nsis`
+- Release mode: draft release, published manually after review
+
+## Signing Keys
+
+The local updater key was generated with:
 
 ```bash
-vp add -g @tauri-apps/cli
-vp exec tauri signer generate -w ~/.tauri/myapp.key
-# Outputs private key (saved) and public key (displayed)
+vp exec tauri signer generate --ci --write-keys C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key
 ```
 
-### 2. Configure GitHub Repository
+The private key stays outside the repository:
 
-Add these secrets (Settings → Secrets and variables → Actions):
-
-- `TAURI_PRIVATE_KEY`: Content of `~/.tauri/myapp.key`
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: Password you set (if any)
-
-### 3. Update Configuration
-
-**`src-tauri/tauri.conf.json`:**
-
-```json
-{
-  "plugins": {
-    "updater": {
-      "active": true,
-      "endpoints": [
-        "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/latest.json"
-      ],
-      "dialog": false,
-      "pubkey": "YOUR_PUBLIC_KEY_FROM_STEP_1"
-    }
-  }
-}
+```text
+C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key
 ```
 
-**Bundle info in `tauri.conf.json`:**
+The public key is stored in `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
 
-- Update `publisher`, `shortDescription`, `longDescription`
-- Update `productName` and `identifier`
+## GitHub Secrets
+
+Add these in GitHub repository settings:
+
+```text
+Settings -> Secrets and variables -> Actions -> New repository secret
+```
+
+Required:
+
+- `TAURI_SIGNING_PRIVATE_KEY`: the full contents of `C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key`
+
+Optional:
+
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: only needed if the signing key was generated with a password
+
+The current generated key has no password, so the password secret can be omitted.
 
 ## Release Process
 
-### Simple Method
+Update versions before tagging:
+
+- `package.json`
+- `package-lock.json`
+- `src-tauri/Cargo.toml`
+- `src-tauri/tauri.conf.json`
+
+Run a local check:
 
 ```bash
-vpr release:prepare v1.0.0
+vpr tauri:check
 ```
 
-This will:
-
-1. Check git status is clean
-2. Run all quality checks (`vpr check:all`)
-3. Update versions in `package.json`, `Cargo.toml`, `tauri.conf.json`
-4. Update `package-lock.json`
-5. Verify updater and bundle release configuration
-6. Print the git commands to review and run manually
-
-Then GitHub Actions will:
-
-1. Build the app for all platforms
-2. Create a draft release
-3. Generate `latest.json` for auto-updates
-4. Upload all installers and signatures
-
-Finally, manually publish the draft release on GitHub.
-
-### Manual Method
+Create and push a tag:
 
 ```bash
-# Update versions in package.json, Cargo.toml, tauri.conf.json
-vpr check:all
-vp install --lockfile-only --ignore-scripts
-git add package.json package-lock.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
-git commit -m "chore: release v1.0.0"
-git tag v1.0.0
-git push origin main
-git push origin v1.0.0
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-## Version Strategy
+GitHub Actions will:
 
-Semantic versioning (`v1.0.0`):
+- Install dependencies with `npm ci`.
+- Run `npx vp exec tsc --noEmit`.
+- Build Windows MSI and NSIS installers through `tauri-apps/tauri-action`.
+- Sign updater artifacts with `TAURI_SIGNING_PRIVATE_KEY`.
+- Create a draft GitHub Release.
+- Upload installers, signatures, and `latest.json`.
 
-- **Major** (1.x.x): Breaking changes
-- **Minor** (x.1.x): New features, backwards compatible
-- **Patch** (x.x.1): Bug fixes
+After the workflow succeeds, review and publish the draft release manually on GitHub.
 
-All three files must have matching versions:
+## Auto-Update Behavior
 
-- `package.json` → `"version": "1.0.0"`
-- `src-tauri/Cargo.toml` → `version = "1.0.0"`
-- `src-tauri/tauri.conf.json` → `"version": "1.0.0"`
-
-## Auto-Update System
-
-### Behavior
-
-- Checks for updates 5 seconds after app launch
-- Shows confirmation dialog when update is available
-- Downloads and installs in background
-- Offers to restart when complete
-- Fails silently on network issues
-
-### Update Flow
-
-```
-App Launch → (5s delay) → Check GitHub → Show Dialog → Download → Install → Restart
-```
-
-### Implementation
-
-```typescript
-// src/App.tsx
-import { check } from '@tauri-apps/plugin-updater'
-import { relaunch } from '@tauri-apps/plugin-process'
-
-useEffect(() => {
-  const checkForUpdates = async () => {
-    try {
-      const update = await check()
-      if (update) {
-        const shouldUpdate = confirm(`Update available: ${update.version}...`)
-        if (shouldUpdate) {
-          await update.downloadAndInstall()
-          if (confirm('Restart to apply update?')) {
-            await relaunch()
-          }
-        }
-      }
-    } catch {
-      // Silent fail - don't bother user with network issues
-    }
-  }
-
-  const timer = setTimeout(checkForUpdates, 5000)
-  return () => clearTimeout(timer)
-}, [])
-```
-
-### Manual Update Check
-
-Users can manually check via:
-
-- **Menu**: App → Check for Updates
-- **Command Palette**: Cmd+K → "Check for Updates"
-
-## Release Artifacts
-
-Each release creates:
-
-- **macOS**: `.dmg` installer
-- **Windows**: `.msi` installer (when configured)
-- **Linux**: `.deb` and `.AppImage` (when configured)
-- **Auto-updater**: `latest.json` manifest and `.sig` signature files
-
-## Security
-
-All updates are cryptographically signed:
-
-1. Private key signs releases during build
-2. Public key in config verifies downloads
-3. Invalid signatures are automatically rejected
+The app checks for updates shortly after startup and can also check from the app menu. Tauri verifies updater downloads with the public key in `tauri.conf.json`; if the signature does not match, the update is rejected.
 
 ## Troubleshooting
 
-| Issue                    | Solution                                          |
-| ------------------------ | ------------------------------------------------- |
-| Workflow doesn't trigger | Ensure tag starts with `v` and is pushed          |
-| Build fails              | Check GitHub secrets, run `vpr check:all` locally |
-| Updates not detected     | Verify endpoint URL and public key match          |
-| Download fails           | Check signatures, file permissions, disk space    |
+| Issue | Fix |
+| ---- | --- |
+| Workflow does not start | Make sure the pushed tag starts with `v` |
+| Signing fails | Verify `TAURI_SIGNING_PRIVATE_KEY` contains the full private key file contents |
+| Updates are not detected | Confirm the latest GitHub Release is published and contains `latest.json` |
+| Signature verification fails | Make sure the private key secret matches the public key in `tauri.conf.json` |
+| Local check fails on `--check` | Use `vpr tauri:check`; it maps to `tauri build --no-bundle` for this CLI version |

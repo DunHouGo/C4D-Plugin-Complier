@@ -5,9 +5,9 @@
   "identifier": "com.boghma.c4d-plugin-compiler",
   "build": {
     "removeUnusedCommands": true,
-    "beforeDevCommand": "vpr dev",
+    "beforeDevCommand": "npx vp dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "vpr build",
+    "beforeBuildCommand": "npx vp exec tsc --noEmit && npx vp build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -63,10 +63,10 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/YOUR_USERNAME/YOUR_REPO/releases/latest/download/latest.json"
+        "https://github.com/DunHouGo/C4D-Plugin-Complier/releases/latest/download/latest.json"
       ],
       "dialog": true,
-      "pubkey": "YOUR_UPDATER_PUBLIC_KEY_HERE"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUyNEFBMUZFMkI2RTEzNjMKUldSakUyNHIvcUZLNHVQcWNod0xiYlZTQVFHMVp6QUQ1S2tabGV4bFRSeW1xbU1OQXl5R045QmMK"
     }
   }
 }

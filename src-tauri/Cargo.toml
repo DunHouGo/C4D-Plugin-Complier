@@ -3,6 +3,7 @@ name = "c4d-plugin-compiler"
 version = "0.1.0"
 description = "Cinema 4D plugin compiler and packager"
 authors = ["Boghma"]
+license = "GPL-2.0-only"
 edition = "2021"
 rust-version = "1.82"
 
