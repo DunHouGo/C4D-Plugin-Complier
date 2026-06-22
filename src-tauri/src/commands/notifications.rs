@@ -1,11 +1,11 @@
-//! Native notification commands.
+//! 原生通知命令。
 //!
-//! Provides cross-platform native notification support using the Tauri notification plugin.
+//! 基于 Tauri 通知插件提供跨平台原生通知。
 
 use tauri::AppHandle;
 
-/// Sends a native system notification.
-/// On mobile platforms, returns an error as notifications are not yet supported.
+/// 发送一条系统原生通知。
+/// 移动端暂不支持通知，因此会返回错误。
 #[tauri::command]
 #[specta::specta]
 pub async fn send_native_notification(

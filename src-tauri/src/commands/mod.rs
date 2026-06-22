@@ -1,7 +1,7 @@
-//! Tauri command handlers organized by domain.
+//! 按领域组织的 Tauri 命令处理模块。
 //!
-//! Each submodule contains related commands and their helper functions.
-//! Import specific commands via their submodule (e.g., `commands::preferences::greet`).
+//! 每个子模块包含一组相关命令及辅助函数。
+//! 需要具体命令时从对应子模块导入。
 
 pub mod compiler;
 pub mod notifications;

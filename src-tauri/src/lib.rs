@@ -1,8 +1,8 @@
-//! Tauri application library entry point.
+//! Tauri 应用库入口。
 //!
-//! This module serves as the main entry point for the Tauri application.
-//! Command implementations are organized in the `commands` module,
-//! and shared types are in the `types` module.
+//! 这里负责初始化 Tauri 应用。
+//! 命令实现放在 `commands` 模块中，
+//! 共享类型放在 `types` 模块中。
 
 mod bindings;
 mod commands;
@@ -13,22 +13,22 @@ mod utils;
 use compiler::jobs::JobManager;
 use tauri::Manager;
 
-/// Application entry point. Sets up all plugins and initializes the app.
+/// 应用入口，负责注册插件并初始化应用。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = bindings::generate_bindings();
 
-    // Export TypeScript bindings in debug builds
+    // 调试构建时导出 TypeScript 绑定。
     #[cfg(debug_assertions)]
     if let Err(error) = bindings::export_ts_bindings() {
         log::warn!("{error}");
     }
 
-    // Build with common plugins
+    // 创建带通用插件的应用构建器。
     let mut app_builder = tauri::Builder::default();
 
-    // Single instance plugin must be registered FIRST
-    // When user tries to open a second instance, focus the existing window instead
+    // 单实例插件必须最先注册。
+    // 用户启动第二个实例时，聚焦已有主窗口。
     #[cfg(desktop)]
     {
         app_builder = app_builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -39,7 +39,7 @@ pub fn run() {
         }));
     }
 
-    // Window state plugin - saves/restores window position and size
+    // 窗口状态插件用于保存和恢复窗口位置与尺寸。
     #[cfg(desktop)]
     {
         app_builder = app_builder.plugin(
@@ -49,7 +49,7 @@ pub fn run() {
         );
     }
 
-    // Updater plugin for in-app updates
+    // 更新插件用于应用内检查更新。
     #[cfg(desktop)]
     {
         app_builder = app_builder.plugin(tauri_plugin_updater::Builder::new().build());
@@ -60,18 +60,18 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(
             tauri_plugin_log::Builder::new()
-                // Use Debug level in development, Info in production
+                // 开发环境使用 Debug 等级，生产环境使用 Info 等级。
                 .level(if cfg!(debug_assertions) {
                     log::LevelFilter::Debug
                 } else {
                     log::LevelFilter::Info
                 })
                 .targets([
-                    // Always log to stdout for development
+                    // 始终输出到 stdout，方便开发调试。
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
-                    // Log to webview console for development
+                    // 同步输出到 WebView 控制台。
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
-                    // Log to system logs on macOS (appears in Console.app)
+                    // macOS 下写入系统日志，可在 Console.app 查看。
                     #[cfg(target_os = "macos")]
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
                         file_name: None,
@@ -95,8 +95,8 @@ pub fn run() {
                 app.package_info().name
             );
 
-            // NOTE: Application menu is built from JavaScript for i18n support
-            // See src/lib/menu.ts for the menu implementation
+            // 注意：应用菜单由 JavaScript 创建，以复用前端国际化。
+            // 菜单实现见 src/lib/menu.ts。
 
             Ok(())
         })

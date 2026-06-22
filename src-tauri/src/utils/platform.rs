@@ -1,51 +1,51 @@
-//! Cross-platform utilities for handling platform-specific behavior.
+//! 处理平台差异的跨平台工具。
 //!
-//! These utilities are provided for apps built on this template.
-//! They may not be used within the template itself.
+//! 这些工具用于应用中的跨平台逻辑。
+//! 并非每个工具都会在当前代码中直接使用。
 //!
-//! This module provides utilities for writing cross-platform Rust code in Tauri apps.
-//! Use conditional compilation (`#[cfg(target_os = "...")]`) for platform-specific behavior.
+//! 本模块提供编写 Tauri 跨平台 Rust 代码的辅助函数。
+//! 平台专用行为优先使用条件编译。
 //!
-//! # Examples
+//! # 示例
 //!
 //! ```ignore
 //! use crate::utils::platform;
 //!
-//! // Normalize Windows paths to forward slashes for frontend
+//! // 将 Windows 路径标准化为前端使用的正斜杠。
 //! let normalized = platform::normalize_path_for_serialization(&some_path);
 //!
-//! // Platform-specific behavior with cfg
+//! // 使用 cfg 编写平台专用逻辑。
 //! #[cfg(target_os = "macos")]
 //! fn macos_specific() {
-//!     // macOS-only code
+//!     // 仅 macOS 使用的代码。
 //! }
 //!
 //! #[cfg(target_os = "windows")]
 //! fn windows_specific() {
-//!     // Windows-only code
+//!     // 仅 Windows 使用的代码。
 //! }
 //!
 //! #[cfg(target_os = "linux")]
 //! fn linux_specific() {
-//!     // Linux-only code
+//!     // 仅 Linux 使用的代码。
 //! }
 //! ```
 
-// Allow unused code - these utilities are for apps built on this template
+// 允许未使用代码，因为这些工具供跨平台场景按需调用。
 #![allow(dead_code)]
 
 use std::path::Path;
 
-/// Normalizes a path to use forward slashes for consistent frontend handling.
+/// 将路径标准化为正斜杠，便于前端一致处理。
 ///
-/// Windows paths like `C:\Users\foo\bar.txt` become `C:/Users/foo/bar.txt`.
-/// This is useful when sending paths to the React frontend, which expects
-/// forward slashes regardless of the platform.
+/// 例如 Windows 路径 `C:\Users\foo\bar.txt` 会变成 `C:/Users/foo/bar.txt`。
+/// 向 React 前端传递路径时很有用，
+/// 因为前端统一按正斜杠处理。
 ///
-/// On macOS and Linux, paths are already using forward slashes, so this
-/// is essentially a no-op but ensures consistency.
+/// macOS 和 Linux 路径本来就是正斜杠，
+/// 因此这里主要用于保持跨平台一致性。
 ///
-/// # Examples
+/// # 示例
 ///
 /// ```ignore
 /// use std::path::Path;
@@ -59,34 +59,34 @@ pub fn normalize_path_for_serialization(path: &Path) -> String {
     path.display().to_string().replace('\\', "/")
 }
 
-/// Returns true if running on macOS.
+/// 当前运行在 macOS 时返回 true。
 ///
-/// Use this for runtime checks. For compile-time checks, use `#[cfg(target_os = "macos")]`.
+/// 运行时检查使用它，编译期分支请使用 `#[cfg(target_os = "macos")]`。
 #[inline]
 pub const fn is_macos() -> bool {
     cfg!(target_os = "macos")
 }
 
-/// Returns true if running on Windows.
+/// 当前运行在 Windows 时返回 true。
 ///
-/// Use this for runtime checks. For compile-time checks, use `#[cfg(target_os = "windows")]`.
+/// 运行时检查使用它，编译期分支请使用 `#[cfg(target_os = "windows")]`。
 #[inline]
 pub const fn is_windows() -> bool {
     cfg!(target_os = "windows")
 }
 
-/// Returns true if running on Linux.
+/// 当前运行在 Linux 时返回 true。
 ///
-/// Use this for runtime checks. For compile-time checks, use `#[cfg(target_os = "linux")]`.
+/// 运行时检查使用它，编译期分支请使用 `#[cfg(target_os = "linux")]`。
 #[inline]
 pub const fn is_linux() -> bool {
     cfg!(target_os = "linux")
 }
 
-/// Returns the current platform as a string ("macos", "windows", or "linux").
+/// 返回当前平台字符串：`macos`、`windows` 或 `linux`。
 ///
-/// This can be useful when you need to pass the platform info to the frontend
-/// without using the OS plugin.
+/// 需要向前端传递平台信息，
+/// 且不想额外调用 OS 插件时可使用。
 pub const fn current_platform() -> &'static str {
     if cfg!(target_os = "macos") {
         "macos"
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn test_platform_detection_consistency() {
-        // Only one of these should be true
+        // 三个平台判断中应该只有一个为 true。
         let platforms = [is_macos(), is_windows(), is_linux()];
         let count = platforms.iter().filter(|&&x| x).count();
         assert_eq!(count, 1, "Exactly one platform should be detected");

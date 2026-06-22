@@ -29,8 +29,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     ])
 }
 
-/// Export TypeScript bindings to the frontend.
-/// Run with: cargo test export_bindings -- --ignored
+/// 导出前端使用的 TypeScript 绑定。
+/// 运行命令：cargo test export_bindings -- --ignored。
 pub fn export_ts_bindings() -> Result<(), String> {
     generate_bindings()
         .export(
@@ -45,9 +45,9 @@ pub fn export_ts_bindings() -> Result<(), String> {
 mod tests {
     use super::*;
 
-    /// Generate TypeScript bindings file.
-    /// This test is ignored by default so it doesn't run in CI.
-    /// Run manually with: cargo test export_bindings -- --ignored
+    /// 生成 TypeScript 绑定文件。
+    /// 该测试默认忽略，避免在 CI 中自动执行。
+    /// 需要时手动运行：cargo test export_bindings -- --ignored。
     #[test]
     #[ignore]
     fn export_bindings() {

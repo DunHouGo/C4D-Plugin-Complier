@@ -1,4 +1,4 @@
-//! In-memory build job registry.
+//! 内存中的构建任务注册表。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

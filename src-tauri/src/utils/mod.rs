@@ -1,3 +1,3 @@
-//! Utility modules for cross-platform support and common operations.
+//! 跨平台支持和通用操作工具模块。
 
 pub mod platform;

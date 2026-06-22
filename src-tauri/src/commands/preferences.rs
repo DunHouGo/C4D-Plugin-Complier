@@ -1,31 +1,31 @@
-//! Preferences management commands.
+//! 偏好设置管理命令。
 //!
-//! Handles loading and saving user preferences to disk.
+//! 负责从磁盘加载和保存用户偏好设置。
 
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
 use crate::types::{validate_string_input, validate_theme, AppPreferences};
 
-/// Gets the path to the preferences file.
+/// 获取偏好设置文件路径。
 fn get_preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data directory: {e}"))?;
 
-    // Ensure the directory exists
+    // 确保目录存在。
     std::fs::create_dir_all(&app_data_dir)
         .map_err(|e| format!("Failed to create app data directory: {e}"))?;
 
     Ok(app_data_dir.join("preferences.json"))
 }
 
-/// Simple greeting command for demonstration purposes.
+/// 示例问候命令。
 #[tauri::command]
 #[specta::specta]
 pub fn greet(name: &str) -> Result<String, String> {
-    // Input validation
+    // 输入校验。
     validate_string_input(name, 100, "Name").map_err(|e| {
         log::warn!("Invalid greet input: {e}");
         e
@@ -35,8 +35,8 @@ pub fn greet(name: &str) -> Result<String, String> {
     Ok(format!("Hello, {name}! You've been greeted from Rust!"))
 }
 
-/// Loads user preferences from disk.
-/// Returns default preferences if the file doesn't exist.
+/// 从磁盘加载用户偏好设置。
+/// 文件不存在时返回默认偏好设置。
 #[tauri::command]
 #[specta::specta]
 pub async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
@@ -62,12 +62,12 @@ pub async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> 
     Ok(preferences)
 }
 
-/// Saves user preferences to disk.
-/// Uses atomic write (temp file + rename) to prevent corruption.
+/// 将用户偏好设置保存到磁盘。
+/// 使用临时文件加重命名的原子写入方式，避免文件损坏。
 #[tauri::command]
 #[specta::specta]
 pub async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result<(), String> {
-    // Validate theme value
+    // 校验主题取值。
     validate_theme(&preferences.theme)?;
 
     log::debug!("Saving preferences to disk: {preferences:?}");
@@ -78,7 +78,7 @@ pub async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Re
         format!("Failed to serialize preferences: {e}")
     })?;
 
-    // Write to a temporary file first, then rename (atomic operation)
+    // 先写入临时文件，再重命名为目标文件，保证原子性。
     let temp_path = prefs_path.with_extension("tmp");
 
     std::fs::write(&temp_path, json_content).map_err(|e| {
@@ -88,7 +88,7 @@ pub async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Re
 
     if let Err(rename_err) = std::fs::rename(&temp_path, &prefs_path) {
         log::error!("Failed to finalize preferences file: {rename_err}");
-        // Clean up the temp file to avoid leaving orphaned files on disk
+        // 清理临时文件，避免磁盘上残留孤立文件。
         if let Err(remove_err) = std::fs::remove_file(&temp_path) {
             log::warn!("Failed to remove temp file after rename failure: {remove_err}");
         }

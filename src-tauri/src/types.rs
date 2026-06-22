@@ -1,36 +1,36 @@
-//! Shared types and validation functions for the Tauri application.
+//! Tauri 应用共享类型和校验函数。
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::LazyLock;
 
-/// Maximum size for recovery data files (10MB)
+/// 恢复数据文件最大体积 10MB。
 pub const MAX_RECOVERY_DATA_BYTES: u32 = 10_485_760;
 
-/// Pre-compiled regex pattern for filename validation.
-/// Only allows alphanumeric characters, dashes, underscores, and a single extension.
+/// 用于文件名校验的预编译正则。
+/// 仅允许字母数字、短横线、下划线和一个扩展名。
 pub static FILENAME_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[a-zA-Z0-9_-]+(\.[a-zA-Z0-9]+)?$")
         .expect("Failed to compile filename regex pattern")
 });
 
 // ============================================================================
-// Preferences
+// 偏好设置
 // ============================================================================
 
-/// Application preferences that persist to disk.
-/// Only contains settings that should be saved between sessions.
+/// 会持久化到磁盘的应用偏好设置。
+/// 仅包含跨会话需要保留的设置。
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AppPreferences {
     pub theme: String,
-    /// User's preferred language (e.g., "en", "es", "de")
-    /// If None, uses system locale detection
+    /// 用户偏好的界面语言，例如 `zh-CN` 或 `en-US`。
+    /// 为 None 时根据系统语言自动选择。
     pub language: Option<String>,
 }
 
 // ============================================================================
-// C4D Plugin Compiler
+// C4D 插件编译器
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -250,28 +250,28 @@ impl Default for AppPreferences {
     fn default() -> Self {
         Self {
             theme: "system".to_string(),
-            language: None, // None means use system locale
+            language: None, // None 表示跟随系统语言。
         }
     }
 }
 
 // ============================================================================
-// Recovery Errors
+// 恢复错误
 // ============================================================================
 
-/// Error types for recovery operations (typed for frontend matching)
+/// 恢复操作错误类型，供前端按类型匹配。
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "type")]
 pub enum RecoveryError {
-    /// File does not exist (expected case, not a failure)
+    /// 文件不存在，这是预期情况，不代表系统故障。
     FileNotFound,
-    /// Filename validation failed
+    /// 文件名校验失败。
     ValidationError { message: String },
-    /// Data exceeds size limit
+    /// 数据超过大小限制。
     DataTooLarge { max_bytes: u32 },
-    /// File system read/write error
+    /// 文件系统读写错误。
     IoError { message: String },
-    /// JSON serialization/deserialization error
+    /// JSON 序列化或反序列化错误。
     ParseError { message: String },
 }
 
@@ -290,11 +290,11 @@ impl std::fmt::Display for RecoveryError {
 }
 
 // ============================================================================
-// Validation Functions
+// 校验函数
 // ============================================================================
 
-/// Validates a filename for safe file system operations.
-/// Only allows alphanumeric characters, dashes, underscores, and a single extension.
+/// 校验文件名是否适合安全文件系统操作。
+/// 仅允许字母数字、短横线、下划线和一个扩展名。
 pub fn validate_filename(filename: &str) -> Result<(), String> {
     if filename.is_empty() {
         return Err("Filename cannot be empty".to_string());
@@ -314,7 +314,7 @@ pub fn validate_filename(filename: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validates string input length (by character count, not bytes).
+/// 按字符数而非字节数校验字符串长度。
 pub fn validate_string_input(input: &str, max_len: usize, field_name: &str) -> Result<(), String> {
     let char_count = input.chars().count();
     if char_count > max_len {
@@ -323,7 +323,7 @@ pub fn validate_string_input(input: &str, max_len: usize, field_name: &str) -> R
     Ok(())
 }
 
-/// Validates theme value.
+/// 校验主题取值。
 pub fn validate_theme(theme: &str) -> Result<(), String> {
     match theme {
         "light" | "dark" | "system" => Ok(()),

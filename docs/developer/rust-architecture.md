@@ -15,6 +15,12 @@ src-tauri/src/
 │   ├── preferences.rs
 │   ├── notifications.rs
 │   └── recovery.rs
+├── compiler/        # Cinema 4D compiler backend
+│   ├── build/       # Build orchestration, CMake, legacy SDK, command logging
+│   ├── package/     # Package output folders, resources, names, zip archives
+│   ├── sdk/         # SDK config, local C4D detection, version/download rules
+│   ├── env.rs       # Build environment detection
+│   └── jobs.rs      # In-memory build job registry
 └── utils/           # Utility modules
     ├── mod.rs
     └── platform.rs  # Platform-specific helpers
@@ -160,6 +166,7 @@ app_builder = app_builder
 | Logging           | Use `log::info!`, `log::debug!`, etc.                         |
 | String formatting | `format!("{variable}")` not `format!("{}", variable)`         |
 | App handle        | Pass `AppHandle` not `Window` when possible                   |
+| Rust comments     | Keep comments in Chinese for local maintenance context        |
 
 ## Expanding This Architecture
 

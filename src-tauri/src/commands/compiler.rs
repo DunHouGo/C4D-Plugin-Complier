@@ -1,4 +1,4 @@
-//! Tauri commands for the C4D plugin compiler.
+//! C4D 插件编译器的 Tauri 命令。
 
 use std::path::Path;
 

@@ -1,14 +1,19 @@
-//! Packaging helpers for compiled Cinema 4D plugin binaries.
+//! 已编译 Cinema 4D 插件二进制文件的打包入口。
 
-use std::fs::File;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-
-use walkdir::WalkDir;
-use zip::write::FileOptions;
 
 use crate::compiler::require_dir;
 use crate::types::{BuildArtifact, BuildRequest, PackageMode};
+
+mod archive;
+mod fs;
+mod naming;
+mod resources;
+
+use archive::create_zip_archive;
+use fs::remove_path;
+use naming::{package_binary_name, package_folder_name};
+use resources::copy_resources;
 
 pub fn package_outputs(
     request: &BuildRequest,
@@ -150,223 +155,12 @@ fn create_per_version_packages(
     Ok(artifacts)
 }
 
-fn copy_resources(plugin_root: &Path, binary: &Path, package_dir: &Path) -> Result<(), String> {
-    let target = package_dir.join("res");
-    if target.exists() {
-        remove_path(&target)?;
-    }
-
-    if let Some(resource_dir) = find_resource_dir(plugin_root, binary) {
-        copy_dir_recursive(&resource_dir, &target)
-    } else {
-        std::fs::create_dir_all(&target)
-            .map_err(|error| format!("Failed to create {}: {error}", target.display()))
-    }
-}
-
-fn find_resource_dir(plugin_root: &Path, binary: &Path) -> Option<PathBuf> {
-    let direct = plugin_root.join("res");
-    if direct.is_dir() {
-        return Some(direct);
-    }
-
-    let built = binary.parent()?.join("res");
-    if built.is_dir() {
-        return Some(built);
-    }
-
-    find_nested_resource_dir(plugin_root)
-}
-
-fn find_nested_resource_dir(plugin_root: &Path) -> Option<PathBuf> {
-    WalkDir::new(plugin_root)
-        .min_depth(1)
-        .max_depth(5)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_dir())
-        .map(|entry| entry.path().to_path_buf())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|value| value.to_str())
-                .is_some_and(|name| name == "res")
-        })
-        .filter(|path| !path_contains_ignored_component(plugin_root, path))
-        .find(|path| is_likely_module_resource_dir(path))
-}
-
-fn is_likely_module_resource_dir(resource_dir: &Path) -> bool {
-    resource_dir.parent().is_some_and(|module_dir| {
-        module_dir.join("project").is_dir() || module_dir.join("source").is_dir()
-    })
-}
-
-fn path_contains_ignored_component(root: &Path, path: &Path) -> bool {
-    path.strip_prefix(root)
-        .ok()
-        .into_iter()
-        .flat_map(|relative| relative.components())
-        .filter_map(|component| component.as_os_str().to_str())
-        .any(|name| matches!(name, ".git" | "build" | "dist" | "node_modules" | "target"))
-}
-
-fn package_folder_name(package_name: &str, version: &str, configuration: &str) -> String {
-    format!(
-        "{}_{}{}",
-        package_name,
-        package_version_label(version),
-        configuration_suffix(configuration)
-    )
-}
-
-fn package_binary_name(
-    package_name: &str,
-    version: &str,
-    configuration: &str,
-    extension: &str,
-) -> String {
-    format!(
-        "{} {}{}{}",
-        package_name,
-        package_version_label(version),
-        configuration_suffix(configuration),
-        extension
-    )
-}
-
-fn package_version_label(version: &str) -> &str {
-    version.split_once('.').map_or(version, |(major, _)| major)
-}
-
-fn configuration_suffix(configuration: &str) -> &'static str {
-    if configuration.eq_ignore_ascii_case("debug") {
-        "_Debug"
-    } else {
-        ""
-    }
-}
-
-fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
-    for entry in WalkDir::new(source)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        let relative = entry
-            .path()
-            .strip_prefix(source)
-            .map_err(|error| error.to_string())?;
-        let destination = target.join(relative);
-        if entry.file_type().is_dir() {
-            std::fs::create_dir_all(&destination)
-                .map_err(|error| format!("Failed to create {}: {error}", destination.display()))?;
-        } else {
-            if let Some(parent) = destination.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
-            }
-            std::fs::copy(entry.path(), &destination).map_err(|error| {
-                format!(
-                    "Failed to copy {} to {}: {error}",
-                    entry.path().display(),
-                    destination.display()
-                )
-            })?;
-        }
-    }
-    Ok(())
-}
-
-pub fn remove_path(path: &Path) -> Result<(), String> {
-    if !path.exists() {
-        return Ok(());
-    }
-    if path.is_file() {
-        std::fs::remove_file(path)
-            .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
-    } else {
-        std::fs::remove_dir_all(path)
-            .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
-    }
-}
-
-fn create_zip_archive(package_dir: &Path) -> Result<PathBuf, String> {
-    let zip_name = format!(
-        "{}.zip",
-        package_dir
-            .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| format!("Invalid package directory: {}", package_dir.display()))?
-    );
-    let zip_path = package_dir.with_file_name(zip_name);
-    if zip_path.exists() {
-        remove_path(&zip_path)?;
-    }
-
-    let file = File::create(&zip_path)
-        .map_err(|error| format!("Failed to create {}: {error}", zip_path.display()))?;
-    let mut zip = zip::ZipWriter::new(file);
-    let options = FileOptions::<()>::default().compression_method(zip::CompressionMethod::Deflated);
-
-    for entry in WalkDir::new(package_dir).into_iter().filter_map(Result::ok) {
-        let path = entry.path();
-        let relative = path
-            .strip_prefix(package_dir.parent().unwrap_or(package_dir))
-            .map_err(|error| error.to_string())?;
-        let name = relative.to_string_lossy().replace('\\', "/");
-        if entry.file_type().is_dir() {
-            if !name.is_empty() {
-                zip.add_directory(name, options)
-                    .map_err(|error| format!("Failed to add zip directory: {error}"))?;
-            }
-        } else {
-            zip.start_file(name, options)
-                .map_err(|error| format!("Failed to add zip file: {error}"))?;
-            let mut input = File::open(path)
-                .map_err(|error| format!("Failed to open {}: {error}", path.display()))?;
-            let mut buffer = Vec::new();
-            input
-                .read_to_end(&mut buffer)
-                .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
-            zip.write_all(&buffer)
-                .map_err(|error| format!("Failed to write zip data: {error}"))?;
-        }
-    }
-
-    zip.finish()
-        .map_err(|error| format!("Failed to finalize zip archive: {error}"))?;
-    Ok(zip_path)
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
-
-    #[test]
-    fn release_package_names_use_major_version_without_configuration() {
-        assert_eq!(
-            package_folder_name("Boghma WaterMark", "2024.4", "Release"),
-            "Boghma WaterMark_2024"
-        );
-        assert_eq!(
-            package_binary_name("Boghma WaterMark", "2024.4", "Release", ".xlib"),
-            "Boghma WaterMark 2024.xlib"
-        );
-    }
-
-    #[test]
-    fn debug_package_names_keep_debug_suffix() {
-        assert_eq!(
-            package_folder_name("Boghma WaterMark", "2024.4", "Debug"),
-            "Boghma WaterMark_2024_Debug"
-        );
-        assert_eq!(
-            package_binary_name("Boghma WaterMark", "2026", "Debug", ".xlib"),
-            "Boghma WaterMark 2026_Debug.xlib"
-        );
-    }
 
     #[test]
     fn per_version_package_copies_nested_module_resources() {

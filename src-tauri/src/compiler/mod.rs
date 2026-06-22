@@ -1,4 +1,4 @@
-//! Core Cinema 4D plugin compiler services.
+//! Cinema 4D 插件编译器核心服务。
 
 pub mod build;
 pub mod env;

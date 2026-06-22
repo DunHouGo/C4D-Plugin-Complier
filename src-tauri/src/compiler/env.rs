@@ -1,4 +1,4 @@
-//! Environment detection for Cinema 4D plugin builds.
+//! Cinema 4D 插件构建环境检测。
 
 use std::path::PathBuf;
 use std::process::Command;
