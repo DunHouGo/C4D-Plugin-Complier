@@ -2,6 +2,7 @@
 
 ## 2026-06-22
 
+- 恢复 Rust 后端编译调度模块 `src-tauri/src/compiler/build.rs`，修复 Windows GitHub Actions Tauri 构建时找不到 `compiler::build` 模块的问题。
 - 使用 `npm@11.13.0` 重新同步 `package-lock.json` 的可选 peer 依赖，并将 GitHub Actions 中的 Vite+ 调用改为本地 `npm exec -- vp`，修复发布 workflow 的依赖安装失败和后续命令解析风险。
 - 新增 GitHub Actions 手动测试构建 workflow，可在不创建 Release 的情况下验证 Windows 构建链路并上传构建产物。
 - 同步 `package-lock.json` 中的 Tauri npm 包解析版本，修复 GitHub Actions `npm ci` 因锁文件不一致失败的问题。
