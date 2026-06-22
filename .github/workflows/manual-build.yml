@@ -40,18 +40,18 @@ jobs:
         run: npm ci
 
       - name: Typecheck frontend
-        run: npx vp exec tsc --noEmit
+        run: npm exec -- vp exec tsc --noEmit
 
       - name: Build frontend
-        run: npx vp build
+        run: npm exec -- vp build
 
       - name: Build Tauri app without bundles
         if: ${{ !inputs.bundle }}
-        run: npx tauri build --no-bundle
+        run: npm exec -- tauri build --no-bundle
 
       - name: Build Tauri app with bundles
         if: ${{ inputs.bundle }}
-        run: npx tauri build --bundles msi,nsis
+        run: npm exec -- tauri build --bundles msi,nsis
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

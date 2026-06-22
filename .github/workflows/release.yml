@@ -38,7 +38,7 @@ jobs:
         run: npm ci
 
       - name: Typecheck frontend
-        run: npx vp exec tsc --noEmit
+        run: npm exec -- vp exec tsc --noEmit
 
       - name: Build and upload release artifacts
         uses: tauri-apps/tauri-action@v0

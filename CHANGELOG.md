@@ -2,10 +2,11 @@
 
 ## 2026-06-22
 
+- 使用 `npm@11.13.0` 重新同步 `package-lock.json` 的可选 peer 依赖，并将 GitHub Actions 中的 Vite+ 调用改为本地 `npm exec -- vp`，修复发布 workflow 的依赖安装失败和后续命令解析风险。
 - 新增 GitHub Actions 手动测试构建 workflow，可在不创建 Release 的情况下验证 Windows 构建链路并上传构建产物。
 - 同步 `package-lock.json` 中的 Tauri npm 包解析版本，修复 GitHub Actions `npm ci` 因锁文件不一致失败的问题。
 - 将发布 workflow 收敛为仅由 `v*` tag 触发，发布版本时自动构建 Windows 安装包和 updater 产物，并恢复使用 `npm ci` 进行可复现安装。
-- 将 Tauri 构建前命令改为使用本地 `npx vp`，避免 GitHub Actions 中缺少全局 `vpr`。
+- 将 Tauri 构建前命令改为使用本地 Vite+ CLI，避免 GitHub Actions 中缺少全局 `vpr`。
 - 配置 GitHub Actions Windows 发布流程，生成安装包和 Tauri updater 的 `latest.json` 自动更新清单。
 - 配置 updater GitHub Release 端点和签名公钥，并修正平台配置中的应用标题。
 - 更新应用 README，移除模板说明，并将项目许可改为 GPL-2.0-only。
