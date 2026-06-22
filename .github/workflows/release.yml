@@ -78,5 +78,5 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
-          tauriScript: npm exec -- tauri
+          tauriScript: tauri
           args: ${{ matrix.tauri-args }}

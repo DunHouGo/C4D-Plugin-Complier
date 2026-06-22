@@ -1,5 +1,10 @@
 # 更新日志
 
+## 2026-06-22 v0.1.3
+
+- 修复 Release workflow 的 `tauriScript` 配置，使用项目中的 `tauri` npm script，避免被 action 解析为不存在的 `npm run exec`。
+- 将应用版本提升到 `0.1.3`，用于重新触发正式 GitHub Release 构建。
+
 ## 2026-06-22 v0.1.2
 
 - 修复 Release workflow 中不存在的 `tauri-apps/tauri-action@v1` 引用，改用官方存在的 `v0.6.2`。
