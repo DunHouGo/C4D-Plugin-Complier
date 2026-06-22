@@ -21,8 +21,6 @@ import { logger } from '@/lib/logger'
 // Language display names (native names)
 const languageNames: Record<string, string> = {
   'en-US': 'English',
-  'fr-FR': 'Français',
-  'ar-SA': 'العربية',
   'zh-CN': '简体中文',
 }
 

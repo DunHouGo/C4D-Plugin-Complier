@@ -1,14 +1,10 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 import enUS from '../../locales/en-US.json'
-import arSA from '../../locales/ar-SA.json'
-import frFR from '../../locales/fr-FR.json'
 import zhCN from '../../locales/zh-CN.json'
 
 const resources = {
   'en-US': { translation: enUS },
-  'ar-SA': { translation: arSA },
-  'fr-FR': { translation: frFR },
   'zh-CN': { translation: zhCN },
 }
 
@@ -17,8 +13,6 @@ const rtlLanguages = ['ar', 'he', 'fa', 'ur']
 const fallbackLanguage = 'en-US'
 const languageAliases: Record<string, string> = {
   en: 'en-US',
-  ar: 'ar-SA',
-  fr: 'fr-FR',
   zh: 'zh-CN',
 }
 

@@ -15,9 +15,9 @@ This app uses [react-i18next](https://react.i18next.com/) for internationalizati
 
 ```
 /locales/
-├── en.json              # English (default)
-├── ar.json              # Arabic (RTL example)
-└── [lang].json          # Additional languages
+├── en-US.json           # English (default)
+├── zh-CN.json           # Simplified Chinese
+└── [locale].json        # Additional languages
 
 /src/i18n/
 ├── config.ts            # i18next configuration
@@ -30,7 +30,7 @@ This app uses [react-i18next](https://react.i18next.com/) for internationalizati
 
 ### Step 1: Add to Translation File
 
-Add your string to `/locales/en.json`:
+Add your string to `/locales/en-US.json`:
 
 ```json
 {
@@ -60,7 +60,7 @@ function MyComponent() {
 
 ### Step 3: Add to Other Languages
 
-Add the same keys to all other language files (e.g., `/locales/ar.json`).
+Add the same keys to all other language files (e.g., `/locales/zh-CN.json`).
 
 ## Key Naming Conventions
 
@@ -129,21 +129,21 @@ t('items.count', { count: 5 }) // "5 items"
 
 ### Step 1: Create Translation File
 
-Copy `/locales/en.json` to `/locales/[lang].json` and translate all strings.
+Copy `/locales/en-US.json` to `/locales/[locale].json` and translate all strings.
 
 ### Step 2: Register in Config
 
 Update `/src/i18n/config.ts`:
 
 ```typescript
-import en from '../../locales/en.json'
-import ar from '../../locales/ar.json'
-import es from '../../locales/es.json' // NEW
+import enUS from '../../locales/en-US.json'
+import zhCN from '../../locales/zh-CN.json'
+import esES from '../../locales/es-ES.json' // NEW
 
 const resources = {
-  en: { translation: en },
-  ar: { translation: ar },
-  es: { translation: es }, // NEW
+  'en-US': { translation: enUS },
+  'zh-CN': { translation: zhCN },
+  'es-ES': { translation: esES }, // NEW
 }
 ```
 
@@ -307,6 +307,6 @@ await i18n.changeLanguage('ar')
 To test RTL layout:
 
 1. Open Preferences > Appearance
-2. Change language to Arabic (ar)
+2. Register a temporary RTL test locale during development
 3. Verify layout mirrors correctly
 4. Check all text alignment uses logical properties

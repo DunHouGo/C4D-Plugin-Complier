@@ -16,7 +16,7 @@
 - **类型安全的 Rust-TypeScript 桥接**：通过 tauri-specta 生成类型绑定。
 - **工具链约束性能模式**：使用 Vite+、Oxlint、Oxfmt、React Compiler lint 和测试保障质量。
 - **跨平台准备**：包含平台化标题栏、窗口控制和原生菜单集成。
-- **内置国际化**：支持 RTL，并提供 `en-US`、`fr-FR`、`ar-SA`、`zh-CN` 语言包。
+- **内置国际化**：提供 `en-US` 和 `zh-CN` 语言包，并保留面向未来语言的 RTL 布局模式。
 
 ## 技术栈
 

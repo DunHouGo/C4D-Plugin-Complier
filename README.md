@@ -17,7 +17,7 @@ Most Tauri starters give you a blank canvas. This template gives you a working a
 - **Type-safe Rust-TypeScript bridge** via tauri-specta.
 - **Performance patterns enforced by tooling** with Vite+, Oxlint, Oxfmt, React Compiler linting, and focused tests.
 - **Cross-platform ready** with platform-specific title bars, window controls, and native menu integration.
-- **i18n built in** with RTL support and locale files for `en-US`, `fr-FR`, `ar-SA`, and `zh-CN`.
+- **i18n built in** with locale files for `en-US` and `zh-CN`, plus RTL-ready layout patterns for future languages.
 
 ## Stack
 

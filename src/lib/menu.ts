@@ -16,22 +16,21 @@ import { useUIStore } from '@/store/ui-store'
 import { logger } from '@/lib/logger'
 import { notifications } from '@/lib/notifications'
 
-const APP_NAME = 'Tauri Template'
-
 /**
  * Build and set the application menu with translated labels.
  */
 export async function buildAppMenu(): Promise<Menu> {
   const t = i18n.t.bind(i18n)
+  const appName = t('app.name')
 
   try {
     // Build the main application submenu (appears as app name on macOS)
     const appSubmenu = await Submenu.new({
-      text: APP_NAME,
+      text: appName,
       items: [
         await MenuItem.new({
           id: 'about',
-          text: t('menu.about', { appName: APP_NAME }),
+          text: t('menu.about', { appName }),
           action: handleAbout,
         }),
         await PredefinedMenuItem.new({ item: 'Separator' }),
@@ -50,7 +49,7 @@ export async function buildAppMenu(): Promise<Menu> {
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await PredefinedMenuItem.new({
           item: 'Hide',
-          text: t('menu.hide', { appName: APP_NAME }),
+          text: t('menu.hide', { appName }),
         }),
         await PredefinedMenuItem.new({
           item: 'HideOthers',
@@ -63,7 +62,7 @@ export async function buildAppMenu(): Promise<Menu> {
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await PredefinedMenuItem.new({
           item: 'Quit',
-          text: t('menu.quit', { appName: APP_NAME }),
+          text: t('menu.quit', { appName }),
         }),
       ],
     })
@@ -104,9 +103,10 @@ export function setupMenuLanguageListener(): () => void {
 // Menu action handlers
 
 function handleAbout(): void {
+  const appName = i18n.t('app.name')
   logger.info('About menu item clicked')
   alert(
-    `${APP_NAME}\n\nVersion: ${__APP_VERSION__}\n\nBuilt with Tauri v2 + React + TypeScript`
+    `${appName}\n\nVersion: ${__APP_VERSION__}\n\nBuilt with Tauri v2 + React + TypeScript`
   )
 }
 

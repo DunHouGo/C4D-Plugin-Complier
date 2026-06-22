@@ -157,7 +157,7 @@ i18n.t('key')
 ```
 
 - Translation files live in `locales/*.json`.
-- Locale file names and i18n resource keys use standard locale tags: `en-US`, `fr-FR`, `ar-SA`, `zh-CN`.
+- Locale file names and i18n resource keys use standard locale tags such as `en-US` and `zh-CN`.
 - Add new languages by creating `locales/<locale>.json`, registering it in `src/i18n/config.ts`, and adding a native display name in `AppearancePane`.
 - Use `getBestAvailableLanguage()` for system locale or saved preference matching.
 - RTL support is language-code based; use CSS logical properties such as `text-start` instead of `text-left`.

@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Settings, Palette, Zap, XIcon } from 'lucide-react'
+import { Settings, Palette, XIcon } from 'lucide-react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -28,10 +28,9 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { GeneralPane } from './panes/GeneralPane'
 import { AppearancePane } from './panes/AppearancePane'
-import { AdvancedPane } from './panes/AdvancedPane'
 import { Button } from '../ui/button'
 
-type PreferencePane = 'general' | 'appearance' | 'advanced'
+type PreferencePane = 'general' | 'appearance'
 
 const navigationItems = [
   {
@@ -43,11 +42,6 @@ const navigationItems = [
     id: 'appearance' as const,
     labelKey: 'preferences.appearance',
     icon: Palette,
-  },
-  {
-    id: 'advanced' as const,
-    labelKey: 'preferences.advanced',
-    icon: Zap,
   },
 ] as const
 
@@ -138,7 +132,6 @@ export function PreferencesDialog() {
             <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4 max-h-[calc(76vh-3rem)]">
               {activePane === 'general' && <GeneralPane />}
               {activePane === 'appearance' && <AppearancePane />}
-              {activePane === 'advanced' && <AdvancedPane />}
             </div>
           </main>
         </SidebarProvider>
