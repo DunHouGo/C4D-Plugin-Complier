@@ -2,6 +2,7 @@
 
 ## 2026-06-22
 
+- 将 tag 发布流程改为构建成功后自动创建正式 GitHub Release，推送 `v*` tag 后可直接下载 Windows、macOS 和 updater 产物。
 - 将 GitHub Actions 发布流程改为 Windows 与 macOS 双平台矩阵构建，修正 Tauri updater JSON 输入名并移除手动构建中的 frontend dist 产物上传。
 - 恢复 Rust 后端编译调度模块 `src-tauri/src/compiler/build.rs`，修复 Windows GitHub Actions Tauri 构建时找不到 `compiler::build` 模块的问题。
 - 使用 `npm@11.13.0` 重新同步 `package-lock.json` 的可选 peer 依赖，并将 GitHub Actions 中的 Vite+ 调用改为本地 `npm exec -- vp`，修复发布 workflow 的依赖安装失败和后续命令解析风险。

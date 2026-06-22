@@ -7,7 +7,7 @@ Release process, GitHub Actions packaging, and Tauri updater setup for C4D Plugi
 The release flow provides:
 
 - Windows and macOS release builds through GitHub Actions.
-- Windows MSI/NSIS installers and macOS DMG/app bundles uploaded to a GitHub Release draft.
+- Windows MSI/NSIS installers and macOS DMG/app bundles uploaded to a published GitHub Release.
 - Signed Tauri updater artifacts.
 - `latest.json` uploaded to the latest GitHub Release for in-app updates.
 
@@ -20,7 +20,7 @@ The release flow provides:
 - Manual test workflow: `.github/workflows/manual-build.yml`
 - Windows bundle artifacts: `msi,nsis`
 - macOS bundle artifacts: universal `dmg,app`
-- Release mode: draft release, published manually after review
+- Release mode: published release, created automatically after tag builds succeed
 
 ## Signing Keys
 
@@ -84,10 +84,10 @@ GitHub Actions will:
 - Run `npm exec -- vp exec tsc --noEmit`.
 - Build Windows MSI/NSIS installers and macOS universal DMG/app bundles through `tauri-apps/tauri-action`.
 - Sign updater artifacts with `TAURI_SIGNING_PRIVATE_KEY`.
-- Create a draft GitHub Release.
+- Create a published GitHub Release.
 - Upload installers, signatures, and `latest.json`.
 
-After the workflow succeeds, review and publish the draft release manually on GitHub.
+After the workflow succeeds, the release is immediately visible on GitHub Releases and the assets can be downloaded.
 
 ## Manual Test Build
 

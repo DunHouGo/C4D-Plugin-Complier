@@ -67,14 +67,15 @@ jobs:
           releaseBody: |
             ## C4D Plugin Compiler ${{ github.ref_name }}
 
-            ### Windows Installation
-            Download the `.msi` or `.exe` installer from this release and run it.
+            ### Installation
+            - Windows: download the `.msi` or `.exe` installer from this release and run it.
+            - macOS: download the `.dmg` image from this release and drag the app to Applications.
 
             ### Auto Updates
             This release includes signed updater artifacts and `latest.json` for the in-app updater.
 
             **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true
           uploadUpdaterSignatures: true
