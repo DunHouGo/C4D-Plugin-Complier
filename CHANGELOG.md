@@ -1,5 +1,11 @@
 # 更新日志
 
+## 2026-06-22 v0.1.2
+
+- 修复 Release workflow 中不存在的 `tauri-apps/tauri-action@v1` 引用，改用官方存在的 `v0.6.2`。
+- 调整 updater JSON 发布参数为当前 action 支持的 `includeUpdaterJson`。
+- 将应用版本提升到 `0.1.2`，用于重新触发正式 GitHub Release 构建。
+
 ## 2026-06-22 v0.1.1
 
 - 更新 README 展示图和模板来源说明，标注项目基于 `DunHouGo/tauri-desktop-starter` 扩展。
