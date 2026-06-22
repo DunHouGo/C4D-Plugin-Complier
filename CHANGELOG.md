@@ -2,6 +2,7 @@
 
 ## 2026-06-22
 
+- 新增 GitHub Actions 手动测试构建 workflow，可在不创建 Release 的情况下验证 Windows 构建链路并上传构建产物。
 - 同步 `package-lock.json` 中的 Tauri npm 包解析版本，修复 GitHub Actions `npm ci` 因锁文件不一致失败的问题。
 - 将发布 workflow 收敛为仅由 `v*` tag 触发，发布版本时自动构建 Windows 安装包和 updater 产物，并恢复使用 `npm ci` 进行可复现安装。
 - 将 Tauri 构建前命令改为使用本地 `npx vp`，避免 GitHub Actions 中缺少全局 `vpr`。

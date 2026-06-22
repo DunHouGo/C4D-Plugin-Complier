@@ -17,6 +17,7 @@ The release flow provides:
 - Updater endpoint: `https://github.com/DunHouGo/C4D-Plugin-Complier/releases/latest/download/latest.json`
 - Workflow: `.github/workflows/release.yml`
 - Trigger: pushed tags matching `v*`
+- Manual test workflow: `.github/workflows/manual-build.yml`
 - Bundle artifacts: `msi,nsis`
 - Release mode: draft release, published manually after review
 
@@ -86,6 +87,12 @@ GitHub Actions will:
 - Upload installers, signatures, and `latest.json`.
 
 After the workflow succeeds, review and publish the draft release manually on GitHub.
+
+## Manual Test Build
+
+Use the `Manual Test Build` workflow from GitHub Actions when you want to verify the Windows build pipeline without creating a GitHub Release.
+
+By default it runs a no-bundle smoke build and uploads the release executable plus frontend `dist` folder as workflow artifacts. Enable the `bundle` input only when installer artifacts are needed for testing.
 
 ## Auto-Update Behavior
 
