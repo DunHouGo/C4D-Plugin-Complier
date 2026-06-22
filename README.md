@@ -94,8 +94,8 @@ Before the first release, add this GitHub Actions secret:
 To publish a release:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 The updater endpoint is configured as:

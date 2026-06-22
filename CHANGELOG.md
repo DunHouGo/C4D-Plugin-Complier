@@ -1,5 +1,10 @@
 # 更新日志
 
+## 2026-06-22 v0.1.4
+
+- 修复 Release workflow 的 `tauriScript` 调用方式，改为 `npm run tauri`，确保 GitHub Actions 使用项目本地 Tauri CLI。
+- 将应用版本提升到 `0.1.4`，用于重新触发正式 GitHub Release 构建。
+
 ## 2026-06-22 v0.1.3
 
 - 修复 Release workflow 的 `tauriScript` 配置，使用项目中的 `tauri` npm script，避免被 action 解析为不存在的 `npm run exec`。
