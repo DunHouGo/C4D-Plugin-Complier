@@ -5,9 +5,9 @@
   "identifier": "com.boghma.c4d-plugin-compiler",
   "build": {
     "removeUnusedCommands": true,
-    "beforeDevCommand": "vpr dev",
+    "beforeDevCommand": "npx vp dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "vpr build",
+    "beforeBuildCommand": "npx vp exec tsc --noEmit && npx vp build",
     "frontendDist": "../dist"
   },
   "app": {

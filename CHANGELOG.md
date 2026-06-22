@@ -2,6 +2,9 @@
 
 ## 2026-06-22
 
+- 同步 `package-lock.json` 中的 Tauri npm 包解析版本，修复 GitHub Actions `npm ci` 因锁文件不一致失败的问题。
+- 将发布 workflow 收敛为仅由 `v*` tag 触发，发布版本时自动构建 Windows 安装包和 updater 产物，并恢复使用 `npm ci` 进行可复现安装。
+- 将 Tauri 构建前命令改为使用本地 `npx vp`，避免 GitHub Actions 中缺少全局 `vpr`。
 - 配置 GitHub Actions Windows 发布流程，生成安装包和 Tauri updater 的 `latest.json` 自动更新清单。
 - 配置 updater GitHub Release 端点和签名公钥，并修正平台配置中的应用标题。
 - 更新应用 README，移除模板说明，并将项目许可改为 GPL-2.0-only。

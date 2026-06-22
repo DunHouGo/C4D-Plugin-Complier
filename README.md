@@ -81,7 +81,7 @@ vpr tauri build --no-bundle
 
 ## GitHub Releases And Updates
 
-GitHub Actions builds Windows release artifacts when a `v*` tag is pushed or the release workflow is run manually. The workflow uploads MSI/NSIS installers and Tauri updater files, including `latest.json`.
+GitHub Actions builds Windows release artifacts when a `v*` tag is pushed. The workflow uploads MSI/NSIS installers and Tauri updater files, including `latest.json`.
 
 Before the first release, add this GitHub Actions secret:
 

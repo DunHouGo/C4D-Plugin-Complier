@@ -81,7 +81,7 @@ vpr tauri build --no-bundle
 
 ## GitHub 发布和自动更新
 
-推送 `v*` tag 或手动运行 release workflow 时，GitHub Actions 会构建 Windows 发布产物。发布草稿会包含 MSI/NSIS 安装包和 Tauri updater 文件，其中包括 `latest.json`。
+推送 `v*` tag 时，GitHub Actions 会构建 Windows 发布产物。发布草稿会包含 MSI/NSIS 安装包和 Tauri updater 文件，其中包括 `latest.json`。
 
 首次发布前，在 GitHub Actions Secrets 中添加：
 

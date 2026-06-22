@@ -36,4 +36,5 @@ jscpd-report
 *.sw?
 /img/
 **/bindings.ts
+!src/lib/bindings.ts
 /target/

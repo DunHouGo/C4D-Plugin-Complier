@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Release version, for example v0.1.0'
-        required: true
-        type: string
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,16 +20,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Resolve release version
-        id: release
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -50,11 +34,11 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci
 
       - name: Typecheck frontend
-        run: vpr typecheck
+        run: npx vp exec tsc --noEmit
 
       - name: Build and upload release artifacts
         uses: tauri-apps/tauri-action@v0
@@ -63,10 +47,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ steps.release.outputs.version }}
-          releaseName: 'C4D Plugin Compiler ${{ steps.release.outputs.version }}'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'C4D Plugin Compiler ${{ github.ref_name }}'
           releaseBody: |
-            ## C4D Plugin Compiler ${{ steps.release.outputs.version }}
+            ## C4D Plugin Compiler ${{ github.ref_name }}
 
             ### Windows Installation
             Download the `.msi` or `.exe` installer from this release and run it.
@@ -74,7 +58,7 @@ jobs:
             ### Auto Updates
             This release includes signed updater artifacts and `latest.json` for the in-app updater.
 
-            **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ steps.release.outputs.version }}
+            **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true

@@ -16,6 +16,7 @@ The release flow provides:
 - Repository: `DunHouGo/C4D-Plugin-Complier`
 - Updater endpoint: `https://github.com/DunHouGo/C4D-Plugin-Complier/releases/latest/download/latest.json`
 - Workflow: `.github/workflows/release.yml`
+- Trigger: pushed tags matching `v*`
 - Bundle artifacts: `msi,nsis`
 - Release mode: draft release, published manually after review
 
@@ -78,23 +79,13 @@ git push origin v0.1.0
 GitHub Actions will:
 
 - Install dependencies with `npm ci`.
-- Run `vpr typecheck`.
+- Run `npx vp exec tsc --noEmit`.
 - Build Windows MSI and NSIS installers through `tauri-apps/tauri-action`.
 - Sign updater artifacts with `TAURI_SIGNING_PRIVATE_KEY`.
 - Create a draft GitHub Release.
 - Upload installers, signatures, and `latest.json`.
 
 After the workflow succeeds, review and publish the draft release manually on GitHub.
-
-## Manual Workflow Dispatch
-
-The release workflow can also be started manually from GitHub Actions.
-
-Use a version input that starts with `v`, for example:
-
-```text
-v0.1.0
-```
 
 ## Auto-Update Behavior
 
