@@ -4,7 +4,9 @@
 
 C4D Plugin Compiler 是一个用于 Cinema 4D C++ 插件的桌面编译与打包工具。它可以准备 Maxon C++ SDK 来源，检测本机 Windows 构建环境，执行官方 CMake preset 构建流程，并把编译后的插件整理为可直接在 Cinema 4D 中指认的插件文件夹。
 
-应用基于 Tauri 2、Rust、React 和 TypeScript 构建。当前工作流主要面向 Cinema 4D 2024.4 及之后版本的 Windows 构建。
+![C4D Plugin Compiler 界面](images/img.jpg)
+
+应用基于 Tauri 2、Rust、React 和 TypeScript 构建，并基于 [DunHouGo/tauri-desktop-starter](https://github.com/DunHouGo/tauri-desktop-starter) 模板扩展，加入 Cinema 4D SDK 发现、构建调度、插件打包和 updater 发布流程。当前工作流支持 Cinema 4D 2024.4 及之后版本的 Windows 与 macOS 构建。
 
 ## 功能
 
@@ -19,12 +21,12 @@ C4D Plugin Compiler 是一个用于 Cinema 4D C++ 插件的桌面编译与打包
 
 ## 环境要求
 
-- Windows
+- Windows 或 macOS
 - Node.js 20+
 - Rust stable
 - CMake
-- Visual Studio 2022 和 MSVC C++ 构建工具
-- Windows SDK
+- Windows 需要 Visual Studio 2022、MSVC C++ 构建工具和 Windows SDK
+- macOS 需要 Xcode、Clang 和 Python 3.8
 - 需要本机 SDK 检测时安装 Cinema 4D 2024.4 或之后版本
 
 ## 快速开始
@@ -81,7 +83,7 @@ vpr tauri build --no-bundle
 
 ## GitHub 发布和自动更新
 
-推送 `v*` tag 时，GitHub Actions 会构建 Windows 发布产物。发布草稿会包含 MSI/NSIS 安装包和 Tauri updater 文件，其中包括 `latest.json`。
+推送 `v*` tag 时，GitHub Actions 会构建 Windows 和 macOS 发布产物，并自动创建正式 GitHub Release。Release 会包含 Windows MSI/NSIS 安装包、macOS DMG/app 包、updater 签名文件和 `latest.json`。
 
 首次发布前，在 GitHub Actions Secrets 中添加：
 
@@ -92,8 +94,8 @@ vpr tauri build --no-bundle
 发布版本：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 自动更新端点已经配置为：

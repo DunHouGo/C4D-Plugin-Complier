@@ -1,5 +1,10 @@
 # 更新日志
 
+## 2026-06-22 v0.1.1
+
+- 更新 README 展示图和模板来源说明，标注项目基于 `DunHouGo/tauri-desktop-starter` 扩展。
+- 将应用版本提升到 `0.1.1`，用于触发新的 GitHub Release 构建。
+
 ## 2026-06-22
 
 - 将 tag 发布流程改为构建成功后自动创建正式 GitHub Release，推送 `v*` tag 后可直接下载 Windows、macOS 和 updater 产物。

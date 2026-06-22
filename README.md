@@ -4,7 +4,9 @@
 
 C4D Plugin Compiler is a desktop build and packaging tool for Cinema 4D C++ plugins. It helps prepare Maxon C++ SDK sources, detect the local Windows build environment, run the official CMake preset workflow, and package compiled plugins into C4D-ready folders.
 
-The app is built with Tauri 2, Rust, React, and TypeScript. The current workflow focuses on Windows builds for Cinema 4D 2024.4 and newer.
+![C4D Plugin Compiler interface](images/img.jpg)
+
+The app is built with Tauri 2, Rust, React, and TypeScript. It is based on the [DunHouGo/tauri-desktop-starter](https://github.com/DunHouGo/tauri-desktop-starter) template and extends it with Cinema 4D SDK discovery, build orchestration, packaging, and updater release workflows. The current workflow supports Windows and macOS builds for Cinema 4D 2024.4 and newer.
 
 ## Features
 
@@ -19,12 +21,12 @@ The app is built with Tauri 2, Rust, React, and TypeScript. The current workflow
 
 ## Requirements
 
-- Windows
+- Windows or macOS
 - Node.js 20+
 - Rust stable
 - CMake
-- Visual Studio 2022 with MSVC C++ build tools
-- Windows SDK
+- Visual Studio 2022 with MSVC C++ build tools and Windows SDK on Windows
+- Xcode, Clang, and Python 3.8 on macOS
 - Cinema 4D 2024.4 or newer when local SDK detection is needed
 
 ## Quick Start
@@ -81,7 +83,7 @@ vpr tauri build --no-bundle
 
 ## GitHub Releases And Updates
 
-GitHub Actions builds Windows release artifacts when a `v*` tag is pushed. The workflow uploads MSI/NSIS installers and Tauri updater files, including `latest.json`.
+GitHub Actions builds Windows and macOS release artifacts when a `v*` tag is pushed. The workflow publishes a GitHub Release with Windows MSI/NSIS installers, macOS DMG/app bundles, updater signatures, and `latest.json`.
 
 Before the first release, add this GitHub Actions secret:
 
@@ -92,8 +94,8 @@ Before the first release, add this GitHub Actions secret:
 To publish a release:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 The updater endpoint is configured as:
