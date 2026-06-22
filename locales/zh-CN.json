@@ -230,5 +230,6 @@
   "compiler.actions.saveQueuePresetShort": "保存",
   "compiler.actions.removeQueuePresetShort": "删除",
   "compiler.panels.queuePresets": "队列预设",
-  "compiler.queue.presetNamePlaceholder": "预设名称"
+  "compiler.queue.presetNamePlaceholder": "预设名称",
+  "compiler.actions.renameQueuePreset": "重命名已选队列预设"
 }

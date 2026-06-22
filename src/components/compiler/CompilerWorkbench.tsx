@@ -132,6 +132,7 @@ export function CompilerWorkbench() {
   const [logActionMessage, setLogActionMessage] = useState<string | null>(null)
   const [selectedQueuePresetId, setSelectedQueuePresetId] = useState('')
   const [queuePresetName, setQueuePresetName] = useState('')
+  const [editingQueuePresetName, setEditingQueuePresetName] = useState(false)
   const [progress, setProgress] = useState<BuildProgressEvent | null>(null)
   const [jobId, setJobId] = useState<string | null>(null)
   const [runningQueueItemId, setRunningQueueItemId] = useState<string | null>(
@@ -205,6 +206,7 @@ export function CompilerWorkbench() {
       item => item.id === selectedQueuePresetId
     )
     setQueuePresetName(preset?.name ?? '')
+    setEditingQueuePresetName(false)
   }, [buildQueuePresets, selectedQueuePresetId])
 
   useEffect(() => {
@@ -433,20 +435,31 @@ export function CompilerWorkbench() {
   function createQueuePreset() {
     const id = createBuildQueuePreset(queuePresetName)
     setSelectedQueuePresetId(id)
+    setEditingQueuePresetName(false)
   }
 
   function renameSelectedQueuePreset() {
     if (!selectedQueuePresetId) return
     renameBuildQueuePreset(selectedQueuePresetId, queuePresetName)
+    setEditingQueuePresetName(false)
   }
 
-  function loadQueuePreset() {
+  function toggleQueuePresetNameEdit() {
     if (!selectedQueuePresetId) return
-    applyBuildQueuePreset(selectedQueuePresetId)
+    if (editingQueuePresetName) {
+      renameSelectedQueuePreset()
+      return
+    }
+    setEditingQueuePresetName(true)
+  }
+
+  function selectQueuePreset(id: string) {
+    setSelectedQueuePresetId(id)
+    applyBuildQueuePreset(id)
     setEditingQueueItemId(null)
     const preset = useCompilerStore
       .getState()
-      .buildQueuePresets.find(item => item.id === selectedQueuePresetId)
+      .buildQueuePresets.find(item => item.id === id)
     if (!preset) return
     setLogs(current => [
       ...current,
@@ -462,6 +475,7 @@ export function CompilerWorkbench() {
     removeBuildQueuePreset(selectedQueuePresetId)
     setSelectedQueuePresetId('')
     setQueuePresetName('')
+    setEditingQueuePresetName(false)
   }
 
   function clearLogs() {
@@ -809,92 +823,98 @@ export function CompilerWorkbench() {
               </Button>
             </div>
             <section className="rounded-md border bg-background">
-              <div className="flex min-h-10 items-center gap-2 border-b px-3">
-                <Save className="size-4 text-muted-foreground" />
-                <span className="truncate text-sm font-medium">
-                  {t('compiler.panels.queuePresets')}
-                </span>
-              </div>
-              <div className="space-y-2 p-3">
-                <Select
-                  value={selectedQueuePresetId}
-                  onValueChange={setSelectedQueuePresetId}
-                  disabled={
-                    state === 'running' || buildQueuePresets.length === 0
-                  }
-                >
-                  <SelectTrigger
-                    className="h-8 w-full text-xs"
-                    title={t('compiler.actions.selectQueuePreset')}
-                  >
-                    <SelectValue
-                      placeholder={t('compiler.queue.presetSelect')}
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {buildQueuePresets.map(preset => (
-                      <SelectItem key={preset.id} value={preset.id}>
-                        {preset.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  className="h-8 text-xs"
-                  value={queuePresetName}
-                  placeholder={t('compiler.queue.presetNamePlaceholder')}
-                  disabled={state === 'running'}
-                  onChange={event => setQueuePresetName(event.target.value)}
-                  onBlur={renameSelectedQueuePreset}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter') {
-                      renameSelectedQueuePreset()
-                      event.currentTarget.blur()
-                    }
-                  }}
-                />
-                <div className="grid grid-cols-4 gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    title={t('compiler.actions.newQueuePreset')}
-                    disabled={state === 'running'}
-                    onClick={createQueuePreset}
-                  >
-                    <ListPlus className="size-3.5" />
-                    {t('compiler.actions.newQueuePresetShort')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    title={t('compiler.actions.loadQueuePreset')}
-                    disabled={state === 'running' || !selectedQueuePresetId}
-                    onClick={loadQueuePreset}
-                  >
-                    <Play className="size-3.5" />
-                    {t('compiler.actions.loadQueuePresetShort')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    title={t('compiler.actions.saveQueuePreset')}
-                    disabled={state === 'running' || buildQueue.length === 0}
-                    onClick={saveQueuePreset}
-                  >
-                    <Save className="size-3.5" />
-                    {t('compiler.actions.saveQueuePresetShort')}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    title={t('compiler.actions.removeQueuePreset')}
-                    disabled={state === 'running' || !selectedQueuePresetId}
-                    onClick={deleteSelectedQueuePreset}
-                  >
-                    <Trash2 className="size-3.5" />
-                    {t('compiler.actions.removeQueuePresetShort')}
-                  </Button>
+              <div className="grid grid-cols-[auto_minmax(0,1fr)_repeat(4,32px)] items-center gap-1 p-3">
+                <div className="flex min-w-0 items-center gap-2 pr-1">
+                  <Save className="size-4 text-muted-foreground" />
+                  <span className="truncate text-sm font-medium">
+                    {t('compiler.panels.queuePresets')}
+                  </span>
                 </div>
+                {editingQueuePresetName ? (
+                  <Input
+                    className="h-8 min-w-0 text-xs"
+                    value={queuePresetName}
+                    placeholder={t('compiler.queue.presetNamePlaceholder')}
+                    disabled={state === 'running'}
+                    autoFocus
+                    onChange={event => setQueuePresetName(event.target.value)}
+                    onBlur={renameSelectedQueuePreset}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        renameSelectedQueuePreset()
+                        event.currentTarget.blur()
+                      }
+                      if (event.key === 'Escape') {
+                        const preset = buildQueuePresets.find(
+                          item => item.id === selectedQueuePresetId
+                        )
+                        setQueuePresetName(preset?.name ?? '')
+                        setEditingQueuePresetName(false)
+                        event.currentTarget.blur()
+                      }
+                    }}
+                  />
+                ) : (
+                  <Select
+                    value={selectedQueuePresetId}
+                    onValueChange={selectQueuePreset}
+                    disabled={
+                      state === 'running' || buildQueuePresets.length === 0
+                    }
+                  >
+                    <SelectTrigger
+                      className="h-8 min-w-0 text-xs"
+                      title={t('compiler.actions.selectQueuePreset')}
+                    >
+                      <SelectValue
+                        placeholder={t('compiler.queue.presetSelect')}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {buildQueuePresets.map(preset => (
+                        <SelectItem key={preset.id} value={preset.id}>
+                          {preset.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title={t('compiler.actions.renameQueuePreset')}
+                  disabled={state === 'running' || !selectedQueuePresetId}
+                  onClick={toggleQueuePresetNameEdit}
+                >
+                  <FilePenLine className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title={t('compiler.actions.newQueuePreset')}
+                  disabled={state === 'running'}
+                  onClick={createQueuePreset}
+                >
+                  <ListPlus className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title={t('compiler.actions.saveQueuePreset')}
+                  disabled={state === 'running' || buildQueue.length === 0}
+                  onClick={saveQueuePreset}
+                >
+                  <Save className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title={t('compiler.actions.removeQueuePreset')}
+                  disabled={state === 'running' || !selectedQueuePresetId}
+                  onClick={deleteSelectedQueuePreset}
+                >
+                  <Trash2 className="size-3.5" />
+                </Button>
               </div>
             </section>
             <section className="rounded-md border bg-background">

@@ -230,5 +230,6 @@
   "compiler.actions.saveQueuePresetShort": "Save",
   "compiler.actions.removeQueuePresetShort": "Delete",
   "compiler.panels.queuePresets": "Queue Presets",
-  "compiler.queue.presetNamePlaceholder": "Preset name"
+  "compiler.queue.presetNamePlaceholder": "Preset name",
+  "compiler.actions.renameQueuePreset": "Rename selected queue preset"
 }
