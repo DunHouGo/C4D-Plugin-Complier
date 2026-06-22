@@ -1,5 +1,11 @@
 # 更新日志
 
+## 2026-06-22 v0.1.5
+
+- 重新生成无密码 Tauri updater signing key，并同步新的公开 `pubkey` 到 `tauri.conf.json`。
+- 更新 GitHub Actions 的 `TAURI_SIGNING_PRIVATE_KEY` secret，使发布构建可以生成签名 updater 产物。
+- 将应用版本提升到 `0.1.5`，用于重新触发正式 GitHub Release 构建。
+
 ## 2026-06-22 v0.1.4
 
 - 修复 Release workflow 的 `tauriScript` 调用方式，改为 `npm run tauri`，确保 GitHub Actions 使用项目本地 Tauri CLI。

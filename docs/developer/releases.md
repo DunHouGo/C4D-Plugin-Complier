@@ -27,7 +27,7 @@ The release flow provides:
 The local updater key was generated with:
 
 ```bash
-vp exec tauri signer generate --ci --write-keys C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key
+npm run tauri -- signer generate --ci --write-keys C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key
 ```
 
 The private key stays outside the repository:
@@ -74,8 +74,8 @@ vpr tauri:check
 Create and push a tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
 GitHub Actions will:

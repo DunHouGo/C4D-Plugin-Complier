@@ -94,8 +94,8 @@ vpr tauri build --no-bundle
 发布版本：
 
 ```bash
-git tag v0.1.4
-git push origin v0.1.4
+git tag v0.1.5
+git push origin v0.1.5
 ```
 
 自动更新端点已经配置为：
