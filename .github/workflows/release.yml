@@ -11,10 +11,22 @@ env:
 
 jobs:
   publish-tauri:
-    name: Build Windows release
-    runs-on: windows-latest
+    name: Build ${{ matrix.name }} release
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            runner: windows-latest
+            rust-targets: ''
+            tauri-args: --bundles msi,nsis
+          - name: macOS
+            runner: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            tauri-args: --target universal-apple-darwin --bundles dmg,app
 
     steps:
       - name: Checkout repository
@@ -28,11 +40,14 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          key: ${{ matrix.runner }}
 
       - name: Install dependencies
         run: npm ci
@@ -41,7 +56,7 @@ jobs:
         run: npm exec -- vp exec tsc --noEmit
 
       - name: Build and upload release artifacts
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -61,5 +76,7 @@ jobs:
             **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
-          args: --bundles msi,nsis
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          tauriScript: npm exec -- tauri
+          args: ${{ matrix.tauri-args }}

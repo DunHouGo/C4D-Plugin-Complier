@@ -6,8 +6,8 @@ Release process, GitHub Actions packaging, and Tauri updater setup for C4D Plugi
 
 The release flow provides:
 
-- Windows release builds through GitHub Actions.
-- MSI and NSIS installers uploaded to a GitHub Release draft.
+- Windows and macOS release builds through GitHub Actions.
+- Windows MSI/NSIS installers and macOS DMG/app bundles uploaded to a GitHub Release draft.
 - Signed Tauri updater artifacts.
 - `latest.json` uploaded to the latest GitHub Release for in-app updates.
 
@@ -18,7 +18,8 @@ The release flow provides:
 - Workflow: `.github/workflows/release.yml`
 - Trigger: pushed tags matching `v*`
 - Manual test workflow: `.github/workflows/manual-build.yml`
-- Bundle artifacts: `msi,nsis`
+- Windows bundle artifacts: `msi,nsis`
+- macOS bundle artifacts: universal `dmg,app`
 - Release mode: draft release, published manually after review
 
 ## Signing Keys
@@ -80,8 +81,8 @@ git push origin v0.1.0
 GitHub Actions will:
 
 - Install dependencies with `npm ci`.
-- Run `npx vp exec tsc --noEmit`.
-- Build Windows MSI and NSIS installers through `tauri-apps/tauri-action`.
+- Run `npm exec -- vp exec tsc --noEmit`.
+- Build Windows MSI/NSIS installers and macOS universal DMG/app bundles through `tauri-apps/tauri-action`.
 - Sign updater artifacts with `TAURI_SIGNING_PRIVATE_KEY`.
 - Create a draft GitHub Release.
 - Upload installers, signatures, and `latest.json`.
@@ -90,9 +91,9 @@ After the workflow succeeds, review and publish the draft release manually on Gi
 
 ## Manual Test Build
 
-Use the `Manual Test Build` workflow from GitHub Actions when you want to verify the Windows build pipeline without creating a GitHub Release.
+Use the `Manual Test Build` workflow from GitHub Actions when you want to verify the Windows and macOS build pipeline without creating a GitHub Release.
 
-By default it runs a no-bundle smoke build and uploads the release executable plus frontend `dist` folder as workflow artifacts. Enable the `bundle` input only when installer artifacts are needed for testing.
+By default it runs no-bundle smoke builds and uploads only app binaries as workflow artifacts. Enable the `bundle` input only when installer or app bundle artifacts are needed for testing. Frontend `dist` is an internal build input and is not uploaded separately.
 
 ## Auto-Update Behavior
 
