@@ -38,6 +38,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { logger } from '@/lib/logger'
+import { notify } from '@/lib/notifications'
 import { cn } from '@/lib/utils'
 import { useCompilerStore } from '@/store/compiler-store'
 import { HelpHint } from './HelpHint'
@@ -280,6 +281,7 @@ export function CompilerWorkbench() {
           updateBuildQueueItem(queueItemId, {
             status: event.payload.success ? 'success' : 'failed',
             message: event.payload.message,
+            finishedAt: Date.now(),
           })
         }
 
@@ -367,6 +369,7 @@ export function CompilerWorkbench() {
       updateBuildQueueItem(runningQueueItemIdRef.current, {
         status: 'failed',
         message: t('compiler.queue.cancelled'),
+        finishedAt: Date.now(),
       })
     }
     setStopQueueAfterCurrent(true)
@@ -515,6 +518,11 @@ export function CompilerWorkbench() {
       .buildQueue.filter(item => item.status === 'queued')
     if (pendingQueue.length === 0) return
 
+    const queueStartedAt = Date.now()
+    let successCount = 0
+    let failedName = ''
+    let stopped = false
+
     setStopQueueAfterCurrent(false)
     stopQueueAfterCurrentRef.current = false
     setLogs([])
@@ -522,13 +530,20 @@ export function CompilerWorkbench() {
     setProgress(null)
 
     for (const item of pendingQueue) {
-      if (stopQueueAfterCurrentRef.current) break
+      if (stopQueueAfterCurrentRef.current) {
+        stopped = true
+        break
+      }
 
+      const startedAt = Date.now()
       setRunningQueueItemId(item.id)
       runningQueueItemIdRef.current = item.id
       updateBuildQueueItem(item.id, {
         status: 'running',
         message: t('compiler.queue.running'),
+        jobId: null,
+        startedAt,
+        finishedAt: null,
       })
       setLogs(current => [
         ...current,
@@ -545,13 +560,27 @@ export function CompilerWorkbench() {
       updateBuildQueueItem(item.id, {
         status: result.success ? 'success' : 'failed',
         message: result.message,
+        finishedAt: Date.now(),
       })
 
-      if (!result.success) break
+      if (!result.success) {
+        failedName = queueItemLabel(item)
+        break
+      }
+
+      successCount += 1
     }
 
     setRunningQueueItemId(null)
     runningQueueItemIdRef.current = null
+    stopped = stopped || stopQueueAfterCurrentRef.current
+    showQueueSummary({
+      total: pendingQueue.length,
+      successCount,
+      failedName,
+      stopped,
+      duration: formatDuration(Date.now() - queueStartedAt),
+    })
   }
 
   async function runBuildRequest(nextRequest: typeof request) {
@@ -614,6 +643,51 @@ export function CompilerWorkbench() {
     } catch (error) {
       setLogActionMessage(t('compiler.logs.saveFailed', { message: error }))
     }
+  }
+
+  function showQueueSummary({
+    total,
+    successCount,
+    failedName,
+    stopped,
+    duration,
+  }: {
+    total: number
+    successCount: number
+    failedName: string
+    stopped: boolean
+    duration: string
+  }) {
+    const failedCount = failedName ? 1 : 0
+    const skippedCount = total - successCount - failedCount
+    const message = failedName
+      ? t('compiler.queue.summaryFailed', {
+          success: successCount,
+          total,
+          failed: failedName,
+          duration,
+        })
+      : stopped
+        ? t('compiler.queue.summaryStopped', {
+            success: successCount,
+            skipped: skippedCount,
+            total,
+            duration,
+          })
+        : t('compiler.queue.summarySuccess', {
+            success: successCount,
+            total,
+            duration,
+          })
+
+    setLogs(current => [
+      ...current,
+      systemLog(failedName ? 'error' : 'info', message),
+    ])
+    void notify(t('compiler.queue.summaryTitle'), message, {
+      type: failedName ? 'error' : 'success',
+      duration: 8000,
+    })
   }
 
   return (
@@ -1008,6 +1082,8 @@ export function CompilerWorkbench() {
                         editingQueueItemId === item.id &&
                           'border-primary bg-primary/5',
                         item.status === 'running' && 'border-primary/50',
+                        item.status === 'success' &&
+                          'border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_0_1px_rgba(16,185,129,0.08)]',
                         item.status === 'failed' &&
                           'border-destructive/30 bg-destructive/5'
                       )}
@@ -1030,6 +1106,7 @@ export function CompilerWorkbench() {
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {item.request.configuration} ·{' '}
                           {item.request.package_mode}
+                          <QueueDurationText item={item} />
                           {item.message ? ` · ${item.message}` : ''}
                         </div>
                       </div>
@@ -1040,6 +1117,12 @@ export function CompilerWorkbench() {
                               ? 'destructive'
                               : 'secondary'
                           }
+                          className={cn(
+                            item.status === 'success' &&
+                              'border-transparent bg-emerald-600 text-white shadow-sm shadow-emerald-950/10',
+                            item.status === 'running' &&
+                              'border-transparent bg-primary text-primary-foreground'
+                          )}
                         >
                           {t(`compiler.queue.status.${item.status}`)}
                         </Badge>
@@ -1365,6 +1448,41 @@ function queueItemLabel(item: {
     detectPathName(item.request.plugin_root) ||
     'Plugin'
   )
+}
+
+function queueItemDuration(item: {
+  startedAt: number | null
+  finishedAt: number | null
+}) {
+  if (!item.startedAt || !item.finishedAt) return ''
+  return formatDuration(item.finishedAt - item.startedAt)
+}
+
+function QueueDurationText({
+  item,
+}: {
+  item: { startedAt: number | null; finishedAt: number | null }
+}) {
+  const { t } = useTranslation()
+  const duration = queueItemDuration(item)
+  if (!duration) return null
+
+  return <> · {t('compiler.queue.duration', { duration })}</>
+}
+
+function formatDuration(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`
+  }
+  return `${seconds}s`
 }
 
 function detectPathName(path: string) {

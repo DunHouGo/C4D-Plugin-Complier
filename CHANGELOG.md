@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 优化构建队列完成反馈：成功队列项改为绿色高亮，队列项显示构建耗时，整组队列结束后会弹出完成提示并写入成功、失败或停止总结。
 - 修复 macOS 2024.4 legacy SDK 中 `generated/hxx/register.cpp` 可能在 Xcode 编译前尚未生成的问题：构建插件前会主动预检查并生成核心 framework 和实际插件模块的 `register.cpp`，避免 source processor 与编译阶段竞态导致失败。
 - 修复构建队列预设重启后丢失的问题：预设现在持久化到应用数据目录的 JSON 文件中，并会自动迁移旧的 localStorage 数据。
 - 修复 macOS 2024.4 legacy SDK 偶发缺少 framework `generated/hxx/register.cpp` 导致 Xcode 构建失败的问题：检测到缺失生成文件后会先运行对应 framework 的 source processor，再重试插件构建。

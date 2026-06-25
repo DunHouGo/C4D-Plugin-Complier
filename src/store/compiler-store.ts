@@ -15,6 +15,8 @@ export interface BuildQueueItem {
   status: BuildQueueStatus
   message: string | null
   jobId: string | null
+  startedAt: number | null
+  finishedAt: number | null
 }
 
 export interface BuildQueuePreset {
@@ -106,6 +108,8 @@ export const useCompilerStore = create<CompilerState>()(
                 status: 'queued',
                 message: null,
                 jobId: null,
+                startedAt: null,
+                finishedAt: null,
               },
             ],
           }),
@@ -123,6 +127,8 @@ export const useCompilerStore = create<CompilerState>()(
               status: 'queued',
               message: null,
               jobId: null,
+              startedAt: null,
+              finishedAt: null,
             })),
           }),
           undefined,
@@ -172,6 +178,8 @@ export const useCompilerStore = create<CompilerState>()(
                     status: 'queued',
                     message: null,
                     jobId: null,
+                    startedAt: null,
+                    finishedAt: null,
                   }
                 : item
             ),
@@ -273,11 +281,7 @@ export const useCompilerStore = create<CompilerState>()(
           void persistBuildQueuePresets(buildQueuePresets)
         }
 
-        set(
-          { buildQueuePresets },
-          undefined,
-          'hydrateBuildQueuePresets'
-        )
+        set({ buildQueuePresets }, undefined, 'hydrateBuildQueuePresets')
       },
 
       saveBuildQueuePreset: (name, id) => {
@@ -369,6 +373,8 @@ export const useCompilerStore = create<CompilerState>()(
                 status: 'queued',
                 message: null,
                 jobId: null,
+                startedAt: null,
+                finishedAt: null,
               })),
             }
           },
@@ -496,7 +502,9 @@ async function persistBuildQueuePresets(presets: BuildQueuePreset[]) {
   })
 }
 
-function buildQueuePresetToDisk(preset: BuildQueuePreset): DiskBuildQueuePreset {
+function buildQueuePresetToDisk(
+  preset: BuildQueuePreset
+): DiskBuildQueuePreset {
   return {
     id: preset.id,
     name: preset.name,
@@ -505,7 +513,9 @@ function buildQueuePresetToDisk(preset: BuildQueuePreset): DiskBuildQueuePreset 
   }
 }
 
-function buildQueuePresetFromDisk(preset: DiskBuildQueuePreset): BuildQueuePreset {
+function buildQueuePresetFromDisk(
+  preset: DiskBuildQueuePreset
+): BuildQueuePreset {
   return {
     id: preset.id,
     name: preset.name,

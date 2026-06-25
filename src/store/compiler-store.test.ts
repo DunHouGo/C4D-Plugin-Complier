@@ -133,6 +133,8 @@ describe('CompilerStore', () => {
       status: 'running',
       message: 'Building',
       jobId: 'build-1',
+      startedAt: 1000,
+      finishedAt: 2000,
     })
     updateBuildQueueItemRequest(firstId, {
       ...defaultBuildRequest,
@@ -144,6 +146,8 @@ describe('CompilerStore', () => {
       status: 'queued',
       message: null,
       jobId: null,
+      startedAt: null,
+      finishedAt: null,
       request: {
         package_name: 'Updated',
       },
@@ -173,6 +177,8 @@ describe('CompilerStore', () => {
       status: 'failed',
       message: 'SDK failed',
       jobId: 'build-1',
+      startedAt: 1000,
+      finishedAt: 2000,
     })
 
     resetBuildQueue()
@@ -181,6 +187,8 @@ describe('CompilerStore', () => {
       status: 'queued',
       message: null,
       jobId: null,
+      startedAt: null,
+      finishedAt: null,
     })
   })
 
@@ -211,6 +219,8 @@ describe('CompilerStore', () => {
       status: 'queued',
       message: null,
       jobId: null,
+      startedAt: null,
+      finishedAt: null,
       request: {
         package_name: 'BackHighlight',
       },
@@ -251,11 +261,11 @@ describe('CompilerStore', () => {
       name: 'Loaded preset',
       createdAt: '2026-06-25T00:00:00.000Z',
     })
-    expect(useCompilerStore.getState().buildQueuePresets[0]?.requests[0]).toMatchObject(
-      {
-        package_name: 'Loaded',
-      }
-    )
+    expect(
+      useCompilerStore.getState().buildQueuePresets[0]?.requests[0]
+    ).toMatchObject({
+      package_name: 'Loaded',
+    })
   })
 
   it('falls back to local storage presets and migrates them', async () => {
