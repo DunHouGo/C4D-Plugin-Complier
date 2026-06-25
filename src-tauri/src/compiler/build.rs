@@ -124,6 +124,7 @@ pub fn execute_build(
         } else if is_legacy_sdk_root(&sdk_root) {
             prepare_legacy_module_workspace(&sdk_root, request, log, job_id)?;
             generate_legacy_projects(&sdk_root, log, job_id)?;
+            prepare_legacy_framework_generated_files(&sdk_root, log, job_id)?;
 
             for configuration in request.configuration.cmake_configs() {
                 current += 1;
@@ -556,6 +557,25 @@ fn generate_legacy_projects(
     }
 }
 
+fn prepare_legacy_framework_generated_files(
+    sdk_root: &Path,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    let framework_roots = legacy_framework_roots_requiring_register(sdk_root);
+    if framework_roots.is_empty() {
+        return Ok(());
+    }
+
+    log_warn(
+        log,
+        job_id,
+        "toolchain",
+        "Legacy SDK framework generated files are incomplete; running source processor before building",
+    );
+    recover_legacy_framework_generated_files(sdk_root, framework_roots, log, job_id)
+}
+
 fn build_legacy_target_with_retry(
     sdk_root: &Path,
     configuration: &str,
@@ -590,6 +610,7 @@ fn build_legacy_target(
     {
         let project = resolve_legacy_xcode_project(sdk_root, module_name, log, job_id)?;
         let scheme = resolve_legacy_xcode_scheme(&project, module_name, log, job_id)?;
+        prepare_legacy_module_generated_file(sdk_root, &project, log, job_id)?;
         let shim_dir = prepare_python_shim()?;
         let args = vec![
             "-project".to_string(),
@@ -796,6 +817,31 @@ fn recover_legacy_generated_files(
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<(), String> {
+    let framework_roots = missing_legacy_generated_framework_roots(error);
+    if framework_roots.is_empty() {
+        return Err("Missing legacy generated file could not be mapped to a framework".to_string());
+    }
+
+    recover_legacy_framework_generated_files(sdk_root, framework_roots, log, job_id)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn recover_legacy_generated_files(
+    _sdk_root: &Path,
+    _error: &str,
+    _log: LogCallback<'_>,
+    _job_id: &str,
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn recover_legacy_framework_generated_files(
+    sdk_root: &Path,
+    framework_roots: Vec<PathBuf>,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
     let source_processor = sdk_root
         .join("frameworks")
         .join("settings")
@@ -806,11 +852,6 @@ fn recover_legacy_generated_files(
             "Legacy SDK source processor was not found at {}",
             source_processor.display()
         ));
-    }
-
-    let framework_roots = missing_legacy_generated_framework_roots(error);
-    if framework_roots.is_empty() {
-        return Err("Missing legacy generated file could not be mapped to a framework".to_string());
     }
 
     let shim_dir = prepare_python_shim()?;
@@ -846,13 +887,75 @@ fn recover_legacy_generated_files(
 }
 
 #[cfg(not(target_os = "macos"))]
-fn recover_legacy_generated_files(
+fn recover_legacy_framework_generated_files(
     _sdk_root: &Path,
-    _error: &str,
+    _framework_roots: Vec<PathBuf>,
     _log: LogCallback<'_>,
     _job_id: &str,
 ) -> Result<(), String> {
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn prepare_legacy_module_generated_file(
+    sdk_root: &Path,
+    project: &Path,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    let module_root = legacy_module_root_for_xcode_project(project).ok_or_else(|| {
+        format!(
+            "Legacy module root could not be resolved from Xcode project {}",
+            project.display()
+        )
+    })?;
+    if legacy_framework_generated_register_exists(&module_root) {
+        return Ok(());
+    }
+
+    log_warn(
+        log,
+        job_id,
+        "toolchain",
+        &format!(
+            "Legacy SDK module generated files are incomplete for {}; running source processor before building",
+            module_root.display()
+        ),
+    );
+    recover_legacy_framework_generated_files(sdk_root, vec![module_root], log, job_id)
+}
+
+#[cfg(target_os = "macos")]
+fn legacy_module_root_for_xcode_project(project: &Path) -> Option<PathBuf> {
+    let project_dir = project.parent()?;
+    if project_dir.file_name().and_then(|value| value.to_str()) != Some("project") {
+        return None;
+    }
+    project_dir.parent().map(Path::to_path_buf)
+}
+
+fn legacy_framework_roots_requiring_register(sdk_root: &Path) -> Vec<PathBuf> {
+    legacy_framework_roots_for_names(
+        sdk_root,
+        &[
+            "core.framework",
+            "math.framework",
+            "modeling_geom.framework",
+            "mesh_misc.framework",
+            "cinema.framework",
+        ],
+    )
+    .into_iter()
+    .filter(|framework_root| !legacy_framework_generated_register_exists(framework_root))
+    .collect()
+}
+
+fn legacy_framework_roots_for_names(sdk_root: &Path, names: &[&str]) -> Vec<PathBuf> {
+    names
+        .iter()
+        .map(|name| sdk_root.join("frameworks").join(name))
+        .filter(|path| path.is_dir())
+        .collect()
 }
 
 fn missing_legacy_generated_framework_roots(error: &str) -> Vec<PathBuf> {
@@ -1363,6 +1466,48 @@ mod tests {
     }
 
     #[test]
+    fn legacy_framework_roots_requiring_register_reports_only_missing_registers() {
+        let sdk = TempTree::new("c4d-legacy-frameworks");
+        for framework in [
+            "core.framework",
+            "math.framework",
+            "modeling_geom.framework",
+            "mesh_misc.framework",
+            "cinema.framework",
+        ] {
+            std::fs::create_dir_all(sdk.path().join("frameworks").join(framework)).unwrap();
+        }
+        std::fs::create_dir_all(
+            sdk.path()
+                .join("frameworks")
+                .join("core.framework")
+                .join("generated")
+                .join("hxx"),
+        )
+        .unwrap();
+        std::fs::write(
+            sdk.path()
+                .join("frameworks")
+                .join("core.framework")
+                .join("generated")
+                .join("hxx")
+                .join("register.cpp"),
+            "",
+        )
+        .unwrap();
+
+        let roots = legacy_framework_roots_requiring_register(sdk.path());
+
+        assert_eq!(roots.len(), 4);
+        assert!(!roots
+            .iter()
+            .any(|path| path.ends_with("frameworks/core.framework")));
+        assert!(roots
+            .iter()
+            .any(|path| path.ends_with("frameworks/cinema.framework")));
+    }
+
+    #[test]
     fn legacy_workspace_copy_skips_vcs_and_cache_dirs() {
         let source = TempTree::new("c4d-plugin-source");
         let target = TempTree::new("c4d-plugin-target");
@@ -1446,6 +1591,18 @@ mod tests {
         let resolved = resolve_legacy_xcode_project(sdk.path(), "Draw.back", &log, "test").unwrap();
 
         assert_eq!(resolved, project);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn legacy_module_root_resolves_from_nested_xcode_project() {
+        let project =
+            PathBuf::from("/sdk/plugins/BackHighlight/draw.back/project/draw.back.xcodeproj");
+
+        assert_eq!(
+            legacy_module_root_for_xcode_project(&project),
+            Some(PathBuf::from("/sdk/plugins/BackHighlight/draw.back"))
+        );
     }
 
     struct TempTree {

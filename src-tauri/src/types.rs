@@ -39,17 +39,9 @@ pub struct BuildQueuePreset {
 }
 
 /// 构建队列预设集合。
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub struct BuildQueuePresetStore {
     pub presets: Vec<BuildQueuePreset>,
-}
-
-impl Default for BuildQueuePresetStore {
-    fn default() -> Self {
-        Self {
-            presets: Vec::new(),
-        }
-    }
 }
 
 // ============================================================================
