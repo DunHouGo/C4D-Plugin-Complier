@@ -356,7 +356,7 @@ pub fn detect_cmake_path() -> Option<String> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn detect_cmake_path() -> Option<String> {
-    find_program("cmake")
+    find_program("cmake").or_else(find_cmake_in_common_locations)
 }
 
 fn detect_cmake() -> ToolStatus {
@@ -573,6 +573,24 @@ fn find_program(program: &str) -> Option<String> {
         .ok()
         .map(|text| text.trim().to_string())
         .filter(|text| !text.is_empty())
+}
+
+#[cfg(target_os = "macos")]
+fn find_cmake_in_common_locations() -> Option<String> {
+    [
+        "/opt/homebrew/bin/cmake",
+        "/usr/local/bin/cmake",
+        "/Applications/CMake.app/Contents/bin/cmake",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .find(|path| path.is_file())
+    .map(|path| path.display().to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn find_cmake_in_common_locations() -> Option<String> {
+    None
 }
 
 pub fn run_capture(program: &str, args: &[&str]) -> Result<String, String> {

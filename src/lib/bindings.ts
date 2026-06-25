@@ -9,7 +9,7 @@
 
 export const commands = {
 /**
- * Simple greeting command for demonstration purposes.
+ * 示例问候命令。
  */
 async greet(name: string) : Promise<Result<string, string>> {
     try {
@@ -20,8 +20,8 @@ async greet(name: string) : Promise<Result<string, string>> {
 }
 },
 /**
- * Loads user preferences from disk.
- * Returns default preferences if the file doesn't exist.
+ * 从磁盘加载用户偏好设置。
+ * 文件不存在时返回默认偏好设置。
  */
 async loadPreferences() : Promise<Result<AppPreferences, string>> {
     try {
@@ -32,8 +32,8 @@ async loadPreferences() : Promise<Result<AppPreferences, string>> {
 }
 },
 /**
- * Saves user preferences to disk.
- * Uses atomic write (temp file + rename) to prevent corruption.
+ * 将用户偏好设置保存到磁盘。
+ * 使用临时文件加重命名的原子写入方式，避免文件损坏。
  */
 async savePreferences(preferences: AppPreferences) : Promise<Result<null, string>> {
     try {
@@ -44,8 +44,8 @@ async savePreferences(preferences: AppPreferences) : Promise<Result<null, string
 }
 },
 /**
- * Sends a native system notification.
- * On mobile platforms, returns an error as notifications are not yet supported.
+ * 发送一条系统原生通知。
+ * 移动端暂不支持通知，因此会返回错误。
  */
 async sendNativeNotification(title: string, body: string | null) : Promise<Result<null, string>> {
     try {
@@ -56,8 +56,8 @@ async sendNativeNotification(title: string, body: string | null) : Promise<Resul
 }
 },
 /**
- * Saves emergency data to a JSON file for later recovery.
- * Validates filename and enforces a 10MB size limit.
+ * 将紧急数据保存为 JSON 文件，便于稍后恢复。
+ * 校验文件名，并强制执行 10MB 大小限制。
  */
 async saveEmergencyData(filename: string, data: JsonValue) : Promise<Result<null, RecoveryError>> {
     try {
@@ -68,8 +68,8 @@ async saveEmergencyData(filename: string, data: JsonValue) : Promise<Result<null
 }
 },
 /**
- * Loads emergency data from a previously saved JSON file.
- * Returns FileNotFound if the file doesn't exist.
+ * 从之前保存的 JSON 文件加载紧急数据。
+ * 文件不存在时返回 FileNotFound。
  */
 async loadEmergencyData(filename: string) : Promise<Result<JsonValue, RecoveryError>> {
     try {
@@ -80,12 +80,34 @@ async loadEmergencyData(filename: string) : Promise<Result<JsonValue, RecoveryEr
 }
 },
 /**
- * Removes recovery files older than 7 days.
- * Returns the count of removed files.
+ * 删除超过 7 天的恢复文件。
+ * 返回已删除文件数量。
  */
 async cleanupOldRecoveryFiles() : Promise<Result<number, RecoveryError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("cleanup_old_recovery_files") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 获取日志目录路径，方便用户定位崩溃日志。
+ */
+async getLogDir() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_log_dir") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 追加一条前端或后端崩溃日志。
+ */
+async appendCrashLog(source: string, message: string, stack: string | null, context: JsonValue | null) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("append_crash_log", { source, message, stack, context }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -224,13 +246,13 @@ async saveBuildLog(path: string, contents: string) : Promise<Result<null, string
 /** user-defined types **/
 
 /**
- * Application preferences that persist to disk.
- * Only contains settings that should be saved between sessions.
+ * 会持久化到磁盘的应用偏好设置。
+ * 仅包含跨会话需要保留的设置。
  */
-export type AppPreferences = { theme: string;
+export type AppPreferences = { theme: string; 
 /**
- * User's preferred language (e.g., "en", "es", "de")
- * If None, uses system locale detection
+ * 用户偏好的界面语言，例如 `zh-CN` 或 `en-US`。
+ * 为 None 时根据系统语言自动选择。
  */
 language: string | null }
 export type BuildArtifact = { version: string | null; configuration: string | null; kind: string; path: string }
@@ -244,27 +266,27 @@ export type InstalledSdkZip = { version: string; path: string; size_bytes: numbe
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 export type PackageMode = "Merged" | "PerVersion" | "Both"
 /**
- * Error types for recovery operations (typed for frontend matching)
+ * 恢复操作错误类型，供前端按类型匹配。
  */
-export type RecoveryError =
+export type RecoveryError = 
 /**
- * File does not exist (expected case, not a failure)
+ * 文件不存在，这是预期情况，不代表系统故障。
  */
-{ type: "FileNotFound" } |
+{ type: "FileNotFound" } | 
 /**
- * Filename validation failed
+ * 文件名校验失败。
  */
-{ type: "ValidationError"; message: string } |
+{ type: "ValidationError"; message: string } | 
 /**
- * Data exceeds size limit
+ * 数据超过大小限制。
  */
-{ type: "DataTooLarge"; max_bytes: number } |
+{ type: "DataTooLarge"; max_bytes: number } | 
 /**
- * File system read/write error
+ * 文件系统读写错误。
  */
-{ type: "IoError"; message: string } |
+{ type: "IoError"; message: string } | 
 /**
- * JSON serialization/deserialization error
+ * JSON 序列化或反序列化错误。
  */
 { type: "ParseError"; message: string }
 export type SdkAutoConfigReport = { sdk_root: string | null; installed_versions: InstalledC4dVersion[]; versions: SdkVersionOption[] }

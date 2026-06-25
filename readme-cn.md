@@ -11,20 +11,21 @@ C4D Plugin Compiler 是一个基于 Rust 和 Tauri 2 的 Cinema 4D C++ 插件编
 ## SDK Sources 参数
 
 - SDK Root：统一的 SDK 根目录，建议使用无空格路径，例如 `Documents\Maxon_SDK`。工具会自动在其下创建 `2024_4`、`2025`、`2026` 等版本目录。
-- Auto Detect：检测本机已安装的 Cinema 4D 大版本，自动选择该大版本内最小可用 C++ SDK，例如 2026 使用 `Cinema_4D_CPP_SDK_2026_0_0.zip`，并保存默认 SDK 根目录。
-- Save：保存当前 SDK 根目录到 `configs/sdk_sources.json`。
+- Smart Check：检测本机已安装的 Cinema 4D 大版本，自动选择该大版本内最小可用 C++ SDK，例如 2026 使用 `Cinema_4D_CPP_SDK_2026_0_0.zip`，并报告缺失的 SDK 与工具链。
+- One-click Setup：创建 SDK 根目录，下载所需的 Maxon 官方 SDK zip，先解压到临时目录校验，再写入对应版本缓存；下载或解压失败会显示在检查报告中，不会留下半截缓存。
+- Save：保存当前 SDK 根目录到用户配置目录中的 `sdk_sources.json`。仓库内旧的 `configs/sdk_sources.json` 只作为旧配置兼容读取，不会在运行时写入。
 - Refresh：重新读取 SDK 根目录、本机 Cinema 4D 安装和可用 SDK 列表。
-- SDK Matrix：可用 SDK 版本列表。已解压的 SDK root、本地 SDK 压缩包和本机 `sdk.zip` 会被视为可构建来源并显示为就绪状态；仅有官方下载地址的版本会保留在矩阵中用于提示，但不会默认加入构建队列。
+- SDK Matrix：可用 SDK 版本列表。已解压的 SDK root 和本地 SDK 压缩包会被视为可构建来源并显示为就绪状态；仅有官方下载地址的版本会保留在矩阵中用于一键配置和构建时下载。本机安装目录中的 `sdk.zip` 只作为没有官方扩展 SDK URL 时的兼容兜底来源。
 - 无效 SDK 压缩包：如果 SDK Matrix 显示 `invalid configured archive` 或 `invalid installed sdk.zip`，表示该 zip 损坏或不是完整 zip。它不会进入构建队列，请删除或替换对应压缩包后刷新。
 - Installed C4D：本机 Cinema 4D 安装检测结果，并显示每个大版本对应的 SDK 版本。
 
-SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<version>\downloads` 中已下载的 zip、Maxon 官方下载地址。本机安装目录中的 `sdk.zip` 作为兼容来源使用。自动下载地址采用 Maxon 常见格式，例如 `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2026_0_0.zip`、`https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2025_0_1.zip` 和 `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2024_4_0.zip`。
+SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<version>\downloads` 中已下载的 zip、Maxon 官方下载地址，最后才回退到本机安装目录中的 `sdk.zip`。自动下载地址采用 Maxon 常见格式，例如 `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2026_0_0.zip`、`https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2025_0_1.zip` 和 `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2024_4_0.zip`。
 
 ## 构建参数
 
 - Plugin Root：插件源码根目录，通常包含 `project/`、`source/` 和可选的 `res/`。支持目录选择和拖拽。选择后会自动根据路径最后一级目录名预填 `Package`。
 - Package：发布包名称、内部 SDK 模块名和输出插件目录名称。选择 Plugin Root 时会自动根据目录名填充；手动修改 Package 后，内部模块名会同步更新。2026 CMake SDK 构建时，包含空格的名称会在内部转换为无空格 target，例如 `Boghma WaterMark` 会按 `Boghma_WaterMark` 构建；如果插件根目录内只有一个嵌套 SDK 模块，例如 `BackHighlight/draw.back/project/projectdefinition.txt`，会自动改用 `draw.back` 作为实际 CMake target。
-- C4D Versions：由 SDK Sources 中的起始版本自动生成的版本标签。自动选择只包含本地已解析的 SDK root、SDK 压缩包或本机 `sdk.zip`，例如没有安装或配置 2025 时，构建队列会跳过 2025。
+- C4D Versions：由 SDK Sources 中的起始版本自动生成的版本标签。自动选择只包含本地已解析的 SDK root 或 SDK 压缩包，例如没有安装或配置 2025 时，构建队列会跳过 2025。
 - Configuration：构建模式，可选 `Debug`、`Release` 或 `Both`。
 - Package Mode：打包模式，可选 `Merged`、`Per Version` 或 `Both`。
 - 产物命名：发布包只保留 C4D 大版本号，例如 `2024.4` 会输出为 `2024`；Release 不加配置后缀，Debug 会追加 `_Debug`。

@@ -159,7 +159,7 @@
   "toast.error.fullscreenEnterFailed": "进入全屏失败：{{message}}",
   "toast.error.fullscreenExitFailed": "退出全屏失败：{{message}}",
   "sdk.fields.requiredEnvironment": "必须环境",
-  "sdk.help.configure": "创建默认 SDK 根目录，从 Maxon 官方下载匹配的 SDK zip，解压到本地，并报告仍需手动处理的工具。",
+  "sdk.help.configure": "创建 SDK 根目录，下载所需的 Maxon 官方 SDK zip，解压到对应版本缓存，并报告仍需手动处理的工具。",
   "sdk.help.requiredEnvironment": "智能检查 C4D C++ 插件构建前必须具备的所有项目。",
   "sdk.actions.inspect": "智能体检",
   "sdk.actions.configure": "一键配置",

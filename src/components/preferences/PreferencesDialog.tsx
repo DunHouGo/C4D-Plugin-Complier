@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings, Palette, XIcon } from 'lucide-react'
 import {
@@ -15,17 +15,9 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-} from '@/components/ui/sidebar'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { useUIStore } from '@/store/ui-store'
+import { cn } from '@/lib/utils'
 import { GeneralPane } from './panes/GeneralPane'
 import { AppearancePane } from './panes/AppearancePane'
 import { Button } from '../ui/button'
@@ -59,52 +51,39 @@ export function PreferencesDialog() {
     <Dialog open={preferencesOpen} onOpenChange={setPreferencesOpen}>
       <DialogContent
         showCloseButton={false}
-        className="overflow-hidden p-0 md:max-h-[76vh] md:max-w-[820px] lg:max-w-[920px] font-sans rounded-xl"
+        className="bottom-4 top-4 flex h-auto max-h-none w-[calc(100vw-2rem)] max-w-none translate-y-0 flex-col gap-0 overflow-hidden rounded-xl p-0 font-sans sm:max-w-none md:w-[min(960px,calc(100vw-3rem))]"
       >
         <DialogTitle className="sr-only">{t('preferences.title')}</DialogTitle>
         <DialogDescription className="sr-only">
           {t('preferences.description')}
         </DialogDescription>
 
-        <SidebarProvider
-          className="items-start"
-          style={
-            {
-              '--sidebar-width': '12rem',
-            } as CSSProperties
-          }
-        >
-          <Sidebar collapsible="none" className="hidden md:flex">
-            <SidebarContent className="p-2">
-              <SidebarGroup className="p-0">
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {navigationItems.map(item => (
-                      <SidebarMenuItem key={item.id}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={activePane === item.id}
-                        >
-                          <button
-                            onClick={() => setActivePane(item.id)}
-                            className="w-full text-sm"
-                          >
-                            <item.icon />
-                            <span>{t(item.labelKey)}</span>
-                          </button>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
-            </SidebarContent>
-          </Sidebar>
+        <div className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+          <aside className="hidden w-48 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">
+            <nav className="flex flex-col gap-1 p-2">
+              {navigationItems.map(item => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActivePane(item.id)}
+                  className={cn(
+                    'flex h-8 w-full items-center gap-2 rounded-md px-2 text-start text-sm outline-hidden transition-colors',
+                    'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+                    activePane === item.id &&
+                      'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                  )}
+                >
+                  <item.icon className="size-4 shrink-0" />
+                  <span className="truncate">{t(item.labelKey)}</span>
+                </button>
+              ))}
+            </nav>
+          </aside>
 
-          <main className="flex flex-1 flex-col overflow-hidden ">
+          <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <header className="flex h-12 shrink-0 items-center gap-2 border-b">
-              <div className="flex items-center gap-2 px-4 grow">
-                <Breadcrumb className="grow">
+              <div className="flex min-w-0 grow items-center gap-2 px-4">
+                <Breadcrumb className="min-w-0 grow">
                   <BreadcrumbList>
                     <BreadcrumbItem className="hidden md:block">
                       <BreadcrumbLink asChild>
@@ -129,12 +108,14 @@ export function PreferencesDialog() {
               </div>
             </header>
 
-            <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4 max-h-[calc(76vh-3rem)]">
-              {activePane === 'general' && <GeneralPane />}
-              {activePane === 'appearance' && <AppearancePane />}
-            </div>
+            <ScrollArea className="h-full min-h-0 min-w-0 flex-1 overflow-hidden">
+              <div className="min-w-0 pb-6 pl-3 pr-4 pt-3 sm:p-4 sm:pb-6">
+                {activePane === 'general' && <GeneralPane />}
+                {activePane === 'appearance' && <AppearancePane />}
+              </div>
+            </ScrollArea>
           </main>
-        </SidebarProvider>
+        </div>
       </DialogContent>
     </Dialog>
   )

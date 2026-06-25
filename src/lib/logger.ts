@@ -1,9 +1,11 @@
-/**
- * Simple logging utility for the frontend
- *
- * In development: logs to browser console
- * In production: can optionally send to Tauri backend for system logging
- */
+import {
+  debug as tauriDebug,
+  error as tauriError,
+  info as tauriInfo,
+  trace as tauriTrace,
+  warn as tauriWarn,
+} from '@tauri-apps/plugin-log'
+import { commands, type JsonValue } from '@/lib/tauri-bindings'
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
@@ -16,6 +18,7 @@ interface LogEntry {
 
 class Logger {
   private isDevelopment = import.meta.env.DEV
+  private logDirectory: string | null = null
 
   /**
    * Log a trace message (most verbose)
@@ -69,13 +72,58 @@ class Logger {
       this.logToConsole(entry)
     }
 
-    // In production, you could optionally send logs to Tauri backend
-    // This is commented out to keep it simple, but here's how you might do it:
-    /*
-    if (!this.isDevelopment && (level === 'warn' || level === 'error')) {
-      this.logToBackend(entry)
+    void this.logToBackend(entry)
+  }
+
+  async getLogDirectory(): Promise<string | null> {
+    if (this.logDirectory) {
+      return this.logDirectory
     }
-    */
+
+    const result = await commands.getLogDir()
+    if (result.status === 'ok') {
+      this.logDirectory = result.data
+      return result.data
+    }
+
+    this.warn('Failed to resolve log directory', { error: result.error })
+    return null
+  }
+
+  async recordCrash(
+    source: string,
+    error: unknown,
+    context?: Record<string, unknown>
+  ): Promise<void> {
+    const normalized = normalizeError(error)
+    this.error(`Crash captured from ${source}: ${normalized.message}`, {
+      ...context,
+      stack: normalized.stack,
+    })
+
+    try {
+      const result = await commands.appendCrashLog(
+        source,
+        normalized.message,
+        normalized.stack ?? null,
+        toJsonContext(context)
+      )
+      if (result.status === 'ok') {
+        this.logDirectory = parentPath(result.data)
+        return
+      }
+      this.logToConsole({
+        level: 'error',
+        message: `Failed to save crash log: ${result.error}`,
+        timestamp: new Date(),
+      })
+    } catch (saveError) {
+      this.logToConsole({
+        level: 'error',
+        message: `Failed to save crash log: ${String(saveError)}`,
+        timestamp: new Date(),
+      })
+    }
   }
 
   private logToConsole(entry: LogEntry): void {
@@ -103,21 +151,76 @@ class Logger {
     }
   }
 
-  /*
-  // Optional: Send logs to Tauri backend for system logging
   private async logToBackend(entry: LogEntry): Promise<void> {
+    const text = entry.context
+      ? `${entry.message} ${safeStringify(entry.context)}`
+      : entry.message
     try {
-      await invoke('log_from_frontend', {
-        level: entry.level,
-        message: entry.message,
-        timestamp: entry.timestamp.toISOString(),
-        context: entry.context,
-      })
+      switch (entry.level) {
+        case 'trace':
+          await tauriTrace(text)
+          break
+        case 'debug':
+          await tauriDebug(text)
+          break
+        case 'info':
+          await tauriInfo(text)
+          break
+        case 'warn':
+          await tauriWarn(text)
+          break
+        case 'error':
+          await tauriError(text)
+          break
+      }
     } catch (error) {
-      console.warn('Failed to send log to backend:', error)
+      this.logToConsole({
+        level: 'warn',
+        message: `Failed to send log to backend: ${String(error)}`,
+        timestamp: new Date(),
+      })
     }
   }
-  */
+}
+
+function normalizeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      message: `${error.name}: ${error.message}`,
+      stack: error.stack,
+    }
+  }
+
+  return {
+    message: typeof error === 'string' ? error : safeStringify(error),
+    stack: undefined,
+  }
+}
+
+function toJsonContext(context?: Record<string, unknown>): JsonValue | null {
+  if (!context) {
+    return null
+  }
+
+  try {
+    return JSON.parse(safeStringify(context)) as JsonValue
+  } catch {
+    return safeStringify(context)
+  }
+}
+
+function safeStringify(value: unknown) {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function parentPath(path: string) {
+  const normalized = path.replaceAll('\\', '/')
+  const index = normalized.lastIndexOf('/')
+  return index === -1 ? path : path.slice(0, index)
 }
 
 // Export a singleton logger instance

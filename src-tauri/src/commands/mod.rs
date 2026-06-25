@@ -4,6 +4,7 @@
 //! 需要具体命令时从对应子模块导入。
 
 pub mod compiler;
+pub mod diagnostics;
 pub mod notifications;
 pub mod preferences;
 pub mod recovery;

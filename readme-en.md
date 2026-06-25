@@ -11,20 +11,21 @@ C4D Plugin Compiler is a Rust and Tauri 2 desktop tool for building and packagin
 ## SDK Sources Parameters
 
 - SDK Root: one shared SDK root folder. Use a path without spaces, such as `Documents\Maxon_SDK`. The tool creates version folders such as `2024_4`, `2025`, and `2026` under it.
-- Auto Detect: detects locally installed Cinema 4D major versions, selects the smallest matching C++ SDK for each major version, such as `Cinema_4D_CPP_SDK_2026_0_0.zip` for 2026, and saves the default SDK root.
-- Save: writes the current SDK root to `configs/sdk_sources.json`.
+- Smart Check: detects locally installed Cinema 4D major versions, selects the smallest matching C++ SDK for each major version, such as `Cinema_4D_CPP_SDK_2026_0_0.zip` for 2026, and reports missing SDKs or tools.
+- One-click Setup: creates the SDK root, downloads the required official Maxon SDK zip, extracts it into a temporary directory for validation, then writes the version cache. Download or extraction failures are shown in the setup report without leaving a partial cache behind.
+- Save: writes the current SDK root to `sdk_sources.json` in the user config directory. The legacy repository `configs/sdk_sources.json` is only read for compatibility and is not written at runtime.
 - Refresh: reloads the SDK root, local Cinema 4D installs, and available SDK list.
-- SDK Matrix: available SDK versions. Extracted SDK roots, local SDK archives, and installed Cinema 4D `sdk.zip` files are treated as buildable sources and shown as ready. Versions with only an official download URL stay visible in the matrix, but they are not added to the build queue by default.
+- SDK Matrix: available SDK versions. Extracted SDK roots and local SDK archives are treated as buildable sources and shown as ready. Versions with only an official download URL stay visible for one-click setup and build-time downloads. Installed Cinema 4D `sdk.zip` files are only a compatibility fallback when no official extension SDK URL is known.
 - Invalid SDK archives: if the SDK Matrix shows `invalid configured archive` or `invalid installed sdk.zip`, that zip is damaged or incomplete. It will not enter the build queue; delete or replace the archive, then refresh.
 - Installed C4D: detected local Cinema 4D installs and the SDK version mapped to each major version.
 
-SDK resolution order is: extracted SDKs under `SDK Root\<version>\sdk`, downloaded archives under `SDK Root\<version>\downloads`, then the official Maxon download URL. Installed Cinema 4D `sdk.zip` files are kept as a compatibility source. Automatic download URLs use Maxon's common pattern, such as `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2026_0_0.zip`, `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2025_0_1.zip`, and `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2024_4_0.zip`.
+SDK resolution order is: extracted SDKs under `SDK Root\<version>\sdk`, downloaded archives under `SDK Root\<version>\downloads`, the official Maxon download URL, and only then installed Cinema 4D `sdk.zip` files as a compatibility fallback. Automatic download URLs use Maxon's common pattern, such as `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2026_0_0.zip`, `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2025_0_1.zip`, and `https://developers.maxon.net/downloads/Cinema_4D_CPP_SDK_2024_4_0.zip`.
 
 ## Build Parameters
 
 - Plugin Root: plugin source root, usually containing `project/`, `source/`, and optional `res/`. Supports directory picker and drag-and-drop. After selection, the last folder name is used to prefill `Package`.
 - Package: release package name, internal SDK module name, and output plugin folder name. Selecting Plugin Root fills it from the folder name; editing Package updates the internal module name too. For 2026 CMake SDK builds, names containing spaces are converted to a target-safe name internally, for example `Boghma WaterMark` builds as `Boghma_WaterMark`; when the plugin root contains one nested SDK module, such as `BackHighlight/draw.back/project/projectdefinition.txt`, the nested module name is used as the actual CMake target.
-- C4D Versions: version tags generated from the SDK Sources start version. Automatic selection only includes locally resolved SDK roots, SDK archives, or installed `sdk.zip` files; for example, if 2025 is not installed or configured, the build queue skips 2025.
+- C4D Versions: version tags generated from the SDK Sources start version. Automatic selection only includes locally resolved SDK roots or SDK archives; for example, if 2025 is not configured locally, the build queue skips 2025.
 - Configuration: build mode, one of `Debug`, `Release`, or `Both`.
 - Package Mode: packaging mode, one of `Merged`, `Per Version`, or `Both`.
 - Artifact naming: package names keep only the C4D major version, so `2024.4` outputs as `2024`; Release has no configuration suffix, while Debug adds `_Debug`.

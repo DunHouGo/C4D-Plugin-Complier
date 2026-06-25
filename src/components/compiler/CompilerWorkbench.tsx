@@ -37,6 +37,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { logger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { useCompilerStore } from '@/store/compiler-store'
 import { HelpHint } from './HelpHint'
@@ -283,7 +284,25 @@ export function CompilerWorkbench() {
     ])
 
     return () => {
-      void unlisten.then(items => items.forEach(item => item()))
+      void unlisten
+        .then(items => {
+          for (const item of items) {
+            try {
+              Promise.resolve(item()).catch(error => {
+                logger.warn('Failed to unregister build event listener', {
+                  error,
+                })
+              })
+            } catch (error) {
+              logger.warn('Failed to unregister build event listener', {
+                error,
+              })
+            }
+          }
+        })
+        .catch(error => {
+          logger.warn('Failed to resolve build event listeners', { error })
+        })
     }
   }, [addArtifact, setBuildVersions, setSdkStartVersion, updateBuildQueueItem])
 

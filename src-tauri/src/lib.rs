@@ -16,6 +16,8 @@ use tauri::Manager;
 /// 应用入口，负责注册插件并初始化应用。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    commands::diagnostics::install_panic_hook();
+
     let builder = bindings::generate_bindings();
 
     // 调试构建时导出 TypeScript 绑定。
@@ -71,8 +73,7 @@ pub fn run() {
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                     // 同步输出到 WebView 控制台。
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
-                    // macOS 下写入系统日志，可在 Console.app 查看。
-                    #[cfg(target_os = "macos")]
+                    // 写入应用日志目录，用于崩溃后定位问题。
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
                         file_name: None,
                     }),

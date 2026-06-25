@@ -45,13 +45,22 @@ function App() {
         // Build the application menu with the initialized language
         await buildAppMenu()
         logger.debug('Application menu built')
-        setupMenuLanguageListener()
+        return setupMenuLanguageListener()
       } catch (error) {
         logger.warn('Failed to initialize language or menu', { error })
+        return null
       }
     }
 
-    initLanguageAndMenu()
+    let cancelled = false
+    let removeMenuLanguageListener: (() => void) | null = null
+    void initLanguageAndMenu().then(unlisten => {
+      if (cancelled) {
+        unlisten?.()
+        return
+      }
+      removeMenuLanguageListener = unlisten
+    })
 
     // Clean up old recovery files on startup
     cleanupOldFiles().catch(error => {
@@ -63,6 +72,16 @@ function App() {
       isDev: import.meta.env.DEV,
       mode: import.meta.env.MODE,
     })
+    logger
+      .getLogDirectory()
+      .then(logDirectory => {
+        if (logDirectory) {
+          logger.info('Persistent log directory', { logDirectory })
+        }
+      })
+      .catch(error => {
+        logger.warn('Failed to resolve persistent log directory', { error })
+      })
 
     // Auto-updater logic - check for updates 5 seconds after app loads
     const checkForUpdates = async () => {
@@ -117,7 +136,11 @@ function App() {
 
     // Check for updates 5 seconds after app loads
     const updateTimer = setTimeout(checkForUpdates, 5000)
-    return () => clearTimeout(updateTimer)
+    return () => {
+      cancelled = true
+      clearTimeout(updateTimer)
+      removeMenuLanguageListener?.()
+    }
   }, [isWindows])
 
   return (

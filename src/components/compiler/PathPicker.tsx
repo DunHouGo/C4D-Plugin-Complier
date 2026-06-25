@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { FolderOpen, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { logger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
 interface PathPickerProps {
@@ -26,44 +27,77 @@ export function PathPicker({
   onChange,
 }: PathPickerProps) {
   const rootRef = useRef<HTMLDivElement>(null)
+  const valueRef = useRef(value)
+  const onChangeRef = useRef(onChange)
   const [dragging, setDragging] = useState(false)
 
   useEffect(() => {
+    valueRef.current = value
+    onChangeRef.current = onChange
+  }, [onChange, value])
+
+  useEffect(() => {
     let cancelled = false
-    let unlistenPromise: Promise<() => void> | null = null
+    let didUnlisten = false
+    let unlisten: (() => void) | null = null
 
     try {
-      unlistenPromise = getCurrentWebview().onDragDropEvent(event => {
-        if (event.payload.type === 'drop') {
-          const point = {
-            x: event.payload.position.x,
-            y: event.payload.position.y,
+      void getCurrentWebview()
+        .onDragDropEvent(event => {
+          if (event.payload.type === 'drop') {
+            const point = {
+              x: event.payload.position.x,
+              y: event.payload.position.y,
+            }
+            if (isPointInside(rootRef.current, point)) {
+              onChangeRef.current(event.payload.paths[0] ?? valueRef.current)
+            }
+            setDragging(false)
+          } else if (event.payload.type === 'enter') {
+            setDragging(true)
+          } else if (event.payload.type === 'leave') {
+            setDragging(false)
           }
-          if (isPointInside(rootRef.current, point)) {
-            onChange(event.payload.paths[0] ?? value)
+        })
+        .then(nextUnlisten => {
+          unlisten = nextUnlisten
+          if (cancelled) {
+            safeUnlisten()
           }
-          setDragging(false)
-        } else if (event.payload.type === 'enter') {
-          setDragging(true)
-        } else if (event.payload.type === 'leave') {
-          setDragging(false)
-        }
-      })
+        })
+        .catch(error => {
+          logger.warn('Failed to register path drag-and-drop listener', {
+            error,
+          })
+        })
     } catch {
       return undefined
     }
 
-    void unlistenPromise.then(unlisten => {
-      if (cancelled) {
-        unlisten()
-      }
-    })
-
     return () => {
       cancelled = true
-      void unlistenPromise?.then(unlisten => unlisten())
+      safeUnlisten()
     }
-  }, [onChange, value])
+
+    function safeUnlisten() {
+      if (!unlisten || didUnlisten) {
+        return
+      }
+
+      didUnlisten = true
+      try {
+        Promise.resolve(unlisten()).catch(error => {
+          logger.warn('Failed to unregister path drag-and-drop listener', {
+            error,
+          })
+        })
+      } catch (error) {
+        logger.warn('Failed to unregister path drag-and-drop listener', {
+          error,
+        })
+      }
+    }
+  }, [])
 
   async function choosePath() {
     const selected = await open({
@@ -82,12 +116,12 @@ export function PathPicker({
     <div
       ref={rootRef}
       className={cn(
-        'flex rounded-md ring-offset-background transition-shadow',
+        'flex min-w-0 rounded-md ring-offset-background transition-shadow',
         dragging && 'ring-2 ring-ring'
       )}
     >
       <Input
-        className={cn('rounded-r-none', size === 'sm' && 'h-8 text-sm')}
+        className={cn('min-w-0 rounded-r-none', size === 'sm' && 'h-8 text-sm')}
         value={value}
         placeholder={placeholder}
         onChange={event => onChange(event.target.value)}

@@ -15,9 +15,13 @@ C4D Plugin Compiler builds and packages Cinema 4D C++ plugins with locally confi
 
 ## SDK Sources
 
-Use one SDK Root folder without spaces, such as `Documents\Maxon_SDK`. The app resolves SDKs in this order: configured SDK root, configured archive, installed Cinema 4D `sdk.zip`, cache root, then official download URL.
+Use one SDK Root folder without spaces, such as `Documents\Maxon_SDK`. The app resolves SDKs in this order: configured SDK root, configured archive, cache root, official download URL, then installed Cinema 4D `sdk.zip` only as a compatibility fallback.
 
-The SDK Matrix stays visible for known versions, but only SDK roots, archives, and installed `sdk.zip` files are treated as buildable by default. This prevents a missing 2025 install from silently entering a 2024.4 and 2026 local build.
+SDK root preferences are saved in the user config directory. The legacy repository `configs/sdk_sources.json` file is read only as a compatibility fallback.
+
+Smart Check reports detected Cinema 4D installs, SDK availability, and required build tools without changing files. One-click Setup creates the SDK root, downloads the required official Maxon SDK zip, extracts it into a temporary directory for validation, then writes the version cache.
+
+The SDK Matrix stays visible for known versions, but only SDK roots and archives are treated as buildable by default. This prevents a missing 2025 SDK from silently entering a 2024.4 and 2026 local build.
 
 ## Queue Mode
 

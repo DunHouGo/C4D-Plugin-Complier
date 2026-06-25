@@ -41,6 +41,9 @@ export class ErrorBoundary extends Component<Props, State> {
     this.setState({ errorInfo })
 
     // Save crash state asynchronously (don't block error UI)
+    void logger.recordCrash('react-error-boundary', error, {
+      componentStack: errorInfo.componentStack,
+    })
     this.saveCrashData(error, errorInfo)
   }
 

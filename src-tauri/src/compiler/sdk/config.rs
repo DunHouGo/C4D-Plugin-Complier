@@ -11,7 +11,21 @@ use super::{
 };
 
 pub(super) fn sdk_source_config_path() -> PathBuf {
-    PathBuf::from("configs").join(SDK_CONFIG_FILE)
+    dirs::config_dir()
+        .or_else(dirs::data_dir)
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("com.boghma.c4d-plugin-compiler")
+        .join(SDK_CONFIG_FILE)
+}
+
+pub(super) fn legacy_workspace_sdk_source_config_paths() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from("src-tauri")
+            .join("configs")
+            .join(SDK_CONFIG_FILE),
+        PathBuf::from("configs").join(SDK_CONFIG_FILE),
+    ]
 }
 
 pub(super) fn save_sdk_source_config(config: &SdkSourceConfig) -> Result<(), String> {
@@ -22,8 +36,13 @@ pub(super) fn save_sdk_source_config(config: &SdkSourceConfig) -> Result<(), Str
     }
     let text = serde_json::to_string_pretty(config)
         .map_err(|error| format!("Failed to serialize SDK source config: {error}"))?;
-    std::fs::write(&config_path, format!("{text}\n"))
-        .map_err(|error| format!("Failed to write {}: {error}", config_path.display()))
+    let temp_path = config_path.with_extension("json.tmp");
+    std::fs::write(&temp_path, format!("{text}\n"))
+        .map_err(|error| format!("Failed to write {}: {error}", temp_path.display()))?;
+    std::fs::rename(&temp_path, &config_path).map_err(|error| {
+        let _ = std::fs::remove_file(&temp_path);
+        format!("Failed to write {}: {error}", config_path.display())
+    })
 }
 
 pub(super) fn parse_sdk_source_config(text: &str) -> Result<SdkSourceConfig, String> {

@@ -26,6 +26,7 @@ import {
   DEFAULT_SDK_START_VERSION,
   useCompilerStore,
 } from '@/store/compiler-store'
+import { logger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 import { HelpHint } from './HelpHint'
 import { PathPicker } from './PathPicker'
@@ -143,53 +144,101 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
   }, [loadSdkConfig])
 
   async function saveRootConfig() {
-    const result = await commands.saveSdkRootConfig({
-      sdk_root: sdkRoot || null,
-    })
-    if (result.status === 'ok') {
-      setSdkRoot(result.data.sdk_root ?? '')
-      await loadSdkConfig()
-      setMessage(t('sdk.savedRoot'))
-    } else {
-      setMessage(result.error)
+    try {
+      const result = await commands.saveSdkRootConfig({
+        sdk_root: sdkRoot || null,
+      })
+      if (result.status === 'ok') {
+        setSdkRoot(result.data.sdk_root ?? '')
+        await loadSdkConfig()
+        setMessage(t('sdk.savedRoot'))
+      } else {
+        setMessage(result.error)
+      }
+    } catch (error) {
+      setMessage(errorMessage(error))
     }
   }
 
   async function autoDetect() {
-    setActiveAction('inspect')
-    const result = await commands.inspectSdkSetup()
-    if (result.status === 'ok') {
-      setSdkRoot(result.data.sdk_root ?? '')
-      setInstalledVersions(result.data.installed_versions)
-      applySdkVersions(result.data.versions)
-      setSetupReport(result.data)
-      setMessage(result.data.summary)
-    } else {
-      setMessage(result.error)
+    if (activeAction !== null) {
+      return
     }
-    setActiveAction(null)
+
+    setActiveAction('inspect')
+    logger.info('Inspecting SDK setup')
+    try {
+      const result = await commands.inspectSdkSetup()
+      if (result.status === 'ok') {
+        setSdkRoot(result.data.sdk_root ?? '')
+        setInstalledVersions(result.data.installed_versions)
+        applySdkVersions(result.data.versions, result.data.prepared_versions)
+        setSetupReport(result.data)
+        setMessage(result.data.summary)
+        logger.info('SDK setup inspection completed', {
+          summary: result.data.summary,
+          versions: result.data.versions.map(item => item.version),
+        })
+      } else {
+        setMessage(result.error)
+        logger.error('SDK setup inspection failed', { error: result.error })
+      }
+    } catch (error) {
+      setMessage(errorMessage(error))
+      void logger.recordCrash('sdk-setup-inspect', error)
+    } finally {
+      setActiveAction(null)
+    }
   }
 
   async function configureRequiredSdks() {
-    setActiveAction('configure')
-    const result = await commands.configureRequiredSdks(
-      { sdk_root: sdkRoot || null },
-      false
-    )
-    if (result.status === 'ok') {
-      setSdkRoot(result.data.sdk_root ?? '')
-      setInstalledVersions(result.data.installed_versions)
-      applySdkVersions(result.data.versions)
-      setSetupReport(result.data)
-      setMessage(result.data.summary)
-    } else {
-      setMessage(result.error)
+    if (activeAction !== null) {
+      return
     }
-    setActiveAction(null)
+
+    setActiveAction('configure')
+    logger.info('Configuring required SDKs', { sdkRoot })
+    try {
+      const result = await commands.configureRequiredSdks(
+        { sdk_root: sdkRoot || null },
+        false
+      )
+      if (result.status === 'ok') {
+        setSdkRoot(result.data.sdk_root ?? '')
+        setInstalledVersions(result.data.installed_versions)
+        applySdkVersions(result.data.versions, result.data.prepared_versions)
+        setSetupReport(result.data)
+        setMessage(result.data.summary)
+        logger.info('SDK setup configuration completed', {
+          summary: result.data.summary,
+          preparedVersions: result.data.prepared_versions.map(item => ({
+            version: item.version,
+            status: item.status,
+            source: item.source,
+            sdkRoot: item.sdk_root,
+            archivePath: item.archive_path,
+          })),
+        })
+      } else {
+        setMessage(result.error)
+        logger.error('SDK setup configuration failed', { error: result.error })
+      }
+    } catch (error) {
+      setMessage(errorMessage(error))
+      void logger.recordCrash('sdk-setup-configure', error, { sdkRoot })
+    } finally {
+      setActiveAction(null)
+    }
   }
 
-  function applySdkVersions(next: SdkVersionOption[]) {
-    const nextVersions = next.length > 0 ? next : FALLBACK_SDK_VERSIONS
+  function applySdkVersions(
+    next: SdkVersionOption[],
+    preparedVersions: SdkSetupReport['prepared_versions'] = []
+  ) {
+    const nextVersions = mergePreparedVersionStatuses(
+      next.length > 0 ? next : FALLBACK_SDK_VERSIONS,
+      preparedVersions
+    )
     setVersions(nextVersions)
     if (!nextVersions.some(item => item.version === selectedVersion)) {
       const nextVersion = nextVersions[0]?.version ?? DEFAULT_SDK_START_VERSION
@@ -203,7 +252,12 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
 
   const settingsLayout = variant === 'settings'
   const content = (
-    <div className={cn(settingsLayout ? 'space-y-3 p-0' : 'space-y-4 p-4')}>
+    <div
+      className={cn(
+        'min-w-0 overflow-x-hidden',
+        settingsLayout ? 'space-y-3 p-0' : 'space-y-4 p-4'
+      )}
+    >
       <div className="space-y-1.5">
         <FieldLabel
           label={t('sdk.fields.sdkRoot')}
@@ -217,8 +271,8 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
         />
         <div
           className={cn(
-            'grid gap-2',
-            settingsLayout ? 'sm:grid-cols-2' : 'grid-cols-2'
+            'grid min-w-0 gap-2',
+            settingsLayout ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-2'
           )}
         >
           <Button
@@ -243,7 +297,12 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
             <HelpHint text={t('sdk.help.configure')} />
           </Button>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div
+          className={cn(
+            'grid min-w-0 gap-2',
+            settingsLayout ? 'grid-cols-1 lg:grid-cols-2' : 'sm:grid-cols-2'
+          )}
+        >
           <Button
             variant="outline"
             size={settingsLayout ? 'sm' : 'default'}
@@ -278,7 +337,7 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
           className={cn(
             'text-xs text-muted-foreground leading-relaxed',
             settingsLayout
-              ? 'grid gap-x-4 gap-y-1.5 md:grid-cols-2'
+              ? 'grid min-w-0 gap-x-4 gap-y-1.5 xl:grid-cols-2'
               : 'space-y-1.5'
           )}
         >
@@ -391,7 +450,12 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
             {t('sdk.noInstall')}
           </div>
         ) : (
-          <div className={cn('grid gap-2', settingsLayout && 'md:grid-cols-2')}>
+          <div
+            className={cn(
+              'grid min-w-0 gap-2',
+              settingsLayout && 'xl:grid-cols-2'
+            )}
+          >
             {installedVersions.map(item => (
               <div
                 key={item.path}
@@ -401,7 +465,7 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
                   <span className="font-medium">Cinema 4D {item.version}</span>
                   <Badge variant="outline">{item.sdk_version}</Badge>
                 </div>
-                <div className="mt-1 truncate text-muted-foreground">
+                <div className="mt-1 break-all text-muted-foreground">
                   {item.path}
                 </div>
               </div>
@@ -411,7 +475,7 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
       </div>
 
       {message ? (
-        <div className="rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">
+        <div className="break-words rounded-md border bg-background px-2.5 py-2 text-xs text-muted-foreground">
           {message}
         </div>
       ) : null}
@@ -420,7 +484,7 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
 
   if (settingsLayout) {
     return (
-      <div className="mx-auto w-full max-w-[760px] space-y-3">
+      <div className="mx-auto w-full min-w-0 max-w-none space-y-3">
         <div className="space-y-0.5">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <FolderCog className="size-4" />
@@ -452,6 +516,32 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
       <ScrollArea className="min-h-0 flex-1">{content}</ScrollArea>
     </>
   )
+}
+
+function mergePreparedVersionStatuses(
+  versions: SdkVersionOption[],
+  preparedVersions: SdkSetupReport['prepared_versions']
+) {
+  if (preparedVersions.length === 0) {
+    return versions
+  }
+
+  return versions.map(version => {
+    const prepared = preparedVersions.find(
+      item => item.version === version.version
+    )
+    if (!prepared || prepared.status === 'ready') {
+      return version
+    }
+
+    return {
+      ...version,
+      sdk_root: prepared.sdk_root,
+      sdk_zip: prepared.archive_path,
+      download_url: prepared.download_url ?? version.download_url,
+      status: prepared.status,
+    }
+  })
 }
 
 function c4dInstallLabel(sdkVersion: string) {
@@ -495,7 +585,7 @@ function SetupChecklist({
         label={t('sdk.fields.requiredEnvironment')}
         help={t('sdk.help.requiredEnvironment')}
       />
-      <div className={cn('grid gap-2', wide && 'md:grid-cols-2')}>
+      <div className={cn('grid min-w-0 gap-2', wide && 'xl:grid-cols-2')}>
         {requirements.map(item => (
           <div
             key={item.key}
@@ -508,10 +598,10 @@ function SetupChecklist({
               <div className="flex min-w-0 items-center gap-2">
                 <RequirementIcon status={item.status} />
                 <div className="min-w-0">
-                  <div className="truncate text-xs font-medium">
+                  <div className="break-words text-xs font-medium">
                     {item.label}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="break-words text-xs text-muted-foreground">
                     {item.version ?? item.detail}
                   </div>
                 </div>
@@ -521,12 +611,12 @@ function SetupChecklist({
               </Badge>
             </div>
             {item.path ? (
-              <div className="mt-1 truncate pl-5 text-xs text-muted-foreground">
+              <div className="mt-1 break-all pl-5 text-xs text-muted-foreground">
                 {item.path}
               </div>
             ) : null}
             {item.install_hint ? (
-              <div className="mt-1 pl-5 text-xs text-muted-foreground">
+              <div className="mt-1 break-words pl-5 text-xs text-muted-foreground">
                 {item.install_hint}
               </div>
             ) : null}
@@ -559,14 +649,26 @@ function SourceLine({
   if (!value) return null
 
   return (
-    <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+    <div className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground">
       <Download className="size-3.5 shrink-0" />
       <span className="shrink-0 font-medium text-foreground">{label}</span>
-      <span className="truncate" title={value}>
+      <span className="min-w-0 break-all" title={value}>
         {value}
       </span>
     </div>
   )
+}
+
+function errorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message
+  }
+
+  if (typeof error === 'string') {
+    return error
+  }
+
+  return 'Unknown error'
 }
 
 function FieldLabel({ label, help }: { label: string; help: string }) {

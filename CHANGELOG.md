@@ -1,5 +1,17 @@
 # 更新日志
 
+## 未发布
+
+- 修复 macOS 发布版从 Finder 启动时检测不到 Homebrew CMake 的问题：环境检测现在会在 `PATH` 之外继续检查 `/opt/homebrew/bin/cmake`、`/usr/local/bin/cmake` 和 CMake.app。
+- 调整 SDK 解析优先级：优先使用 SDK Root 中已解压或已下载的官方扩展 SDK，其次使用 Maxon 官方下载地址，本机 Cinema 4D 安装目录中的 `sdk.zip` 只作为最后兼容兜底来源。
+- 修复 SDK 一键配置时后台任务 panic 可能导致发布版 App 直接闪退的问题，配置错误现在会返回到界面提示。
+- 恢复 SDK 一键配置的自动下载和解压能力：下载会先写入临时 zip，解压会先进入临时目录并校验 SDK 根目录，成功后再替换正式缓存，失败时只在配置报告中提示并清理半成品。
+- 新增崩溃诊断日志：Rust panic、React ErrorBoundary、前端全局错误和未处理 Promise rejection 会自动追加到应用日志目录下的 `crash.log`，SDK 一键配置也会记录下载、校验和解压阶段。
+- 修复打开设置或路径选择控件重渲染时 Tauri 拖拽监听重复释放导致的前端崩溃，事件监听清理现在会捕获同步和异步释放错误。
+- 将 SDK 来源配置从仓库内 `configs/sdk_sources.json` 迁移到用户配置目录，避免一键配置写入工作区文件触发开发模式热重载并导致 `Importing a module script failed`。
+- 兼容读取旧的 `src-tauri/configs/sdk_sources.json`，并为 React 根节点、前端全局崩溃监听、菜单语言监听和 macOS 窗口焦点监听补充热更新清理，避免开发模式下重复注册监听导致连锁崩溃。
+- 优化偏好设置 SDK 配置页响应式布局，使用 shadcn `ScrollArea` 承载设置内容，并限制弹窗内部高度，避免窄窗口下内容无法滚动或被截断到窗口外。
+
 ## 2026-06-22 v0.1.7
 
 - 重新生成带密码的 Tauri updater signing key，并同步新的公开 `pubkey` 到 `tauri.conf.json`。

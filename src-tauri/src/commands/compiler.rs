@@ -1,5 +1,7 @@
 //! C4D 插件编译器的 Tauri 命令。
 
+use std::any::Any;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 
 use tauri::{AppHandle, Manager};
@@ -159,7 +161,19 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
-    tauri::async_runtime::spawn_blocking(task)
-        .await
-        .map_err(|error| format!("Compiler task failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        catch_unwind(AssertUnwindSafe(task))
+            .map_err(|panic| format!("Compiler task panicked: {}", panic_message(&panic)))?
+    })
+    .await
+    .map_err(|error| format!("Compiler task failed: {error}"))?
+}
+
+fn panic_message(panic: &Box<dyn Any + Send>) -> String {
+    panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("unknown panic")
+        .to_string()
 }

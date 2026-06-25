@@ -35,9 +35,10 @@ logger.error('Request failed', { error: response.error })
 
 ### TypeScript Frontend
 
-- **Development**: All logs go to browser console
-- **Production**: Console logging only (keeps it simple)
+- **Development**: Logs go to browser console and the Tauri log plugin
+- **Production**: Logs go to the Tauri log plugin and app log directory
 - Logger utility at `src/lib/logger.ts`
+- Frontend crashes are also appended to `crash.log` through `append_crash_log`
 
 ## Log Levels
 
@@ -59,9 +60,10 @@ logger.error('Request failed', { error: response.error })
 ### Production
 
 - **Rust**: Terminal (stdout) + log file in app log directory
-- **TypeScript**: Browser DevTools console
+- **TypeScript**: Tauri log file in app log directory
 
 Log directory locations vary by platform (e.g., `~/Library/Logs/` on macOS).
+The app logs the resolved directory on startup. Crash diagnostics are appended to `crash.log` in the same directory; Rust panic hooks use a cache/data-directory fallback if Tauri is not initialized yet.
 
 ## Examples
 
@@ -121,4 +123,5 @@ See [error-handling.md](./error-handling.md) for patterns on when to log vs show
 - Rust logs go to the app's log directory (platform-specific location)
 - No sensitive data should be logged (passwords, tokens, etc.)
 - The plugin supports log rotation when files reach size limits
-- Frontend logs stay in browser - not sent to backend by default
+- Frontend logs are forwarded to `@tauri-apps/plugin-log`
+- Rust panics, React error-boundary crashes, window errors, and unhandled promise rejections are appended to `crash.log`

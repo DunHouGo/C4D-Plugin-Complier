@@ -159,7 +159,7 @@
   "toast.error.fullscreenEnterFailed": "Failed to enter fullscreen: {{message}}",
   "toast.error.fullscreenExitFailed": "Failed to exit fullscreen: {{message}}",
   "sdk.fields.requiredEnvironment": "Required environment",
-  "sdk.help.configure": "Create the default SDK root, download the matching Maxon SDK zip, extract it locally, then report remaining manual tools.",
+  "sdk.help.configure": "Create the SDK root, download the required official Maxon SDK zip, extract it into the version cache, and report remaining manual tools.",
   "sdk.help.requiredEnvironment": "Smart check for all items required before a C4D C++ plugin build can run.",
   "sdk.actions.inspect": "Smart Check",
   "sdk.actions.configure": "One-click Setup",

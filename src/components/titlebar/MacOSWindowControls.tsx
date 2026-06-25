@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { MacOSIcons } from './WindowControlIcons'
 import { useCommandContext } from '@/hooks/use-command-context'
 import { executeCommand } from '@/lib/commands'
+import { logger } from '@/lib/logger'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 interface MacOSWindowControlsProps extends HTMLProps<HTMLDivElement> {
@@ -71,19 +72,42 @@ export function MacOSWindowControls({
       }
     }
 
+    let cancelled = false
+    let didUnlisten = false
     let tauriUnlisten: (() => void) | null = null
-    setupTauriFocusListener().then(unlisten => {
-      tauriUnlisten = unlisten
-    })
+    void setupTauriFocusListener()
+      .then(unlisten => {
+        tauriUnlisten = unlisten
+        if (cancelled) {
+          safeTauriUnlisten()
+        }
+      })
+      .catch(error => {
+        logger.warn('Failed to register window focus listener', { error })
+      })
 
     // Cleanup event listeners
     return () => {
+      cancelled = true
       window.removeEventListener('keydown', handleAltKeyDown)
       window.removeEventListener('keyup', handleAltKeyUp)
       window.removeEventListener('focus', handleWindowFocus)
       window.removeEventListener('blur', handleWindowBlur)
-      if (tauriUnlisten) {
-        tauriUnlisten()
+      safeTauriUnlisten()
+    }
+
+    function safeTauriUnlisten() {
+      if (!tauriUnlisten || didUnlisten) {
+        return
+      }
+
+      didUnlisten = true
+      try {
+        Promise.resolve(tauriUnlisten()).catch(error => {
+          logger.warn('Failed to unregister window focus listener', { error })
+        })
+      } catch (error) {
+        logger.warn('Failed to unregister window focus listener', { error })
       }
     }
   }, [])

@@ -128,7 +128,9 @@ pub fn require_file(path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{current_build_platform, sanitize_path_name, DEFAULT_PRESET_WINDOWS};
+    use super::sanitize_path_name;
+    #[cfg(target_os = "windows")]
+    use super::{current_build_platform, DEFAULT_PRESET_WINDOWS};
 
     #[test]
     fn sanitizes_path_names() {

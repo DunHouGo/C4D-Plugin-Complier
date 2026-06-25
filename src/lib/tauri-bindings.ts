@@ -26,6 +26,7 @@ import {
   commands as generatedCommands,
   type Result,
   type EnvironmentReport as GeneratedEnvironmentReport,
+  type JsonValue,
   type SdkSetupReport as GeneratedSdkSetupReport,
   type SdkVersionOption,
 } from './bindings'
@@ -106,6 +107,19 @@ export const commands = {
     invokeResult<SdkSourceConfig>('save_sdk_root_config', { config }),
   autoConfigureSdkSources: () =>
     invokeResult<SdkAutoConfigReport>('auto_configure_sdk_sources'),
+  getLogDir: () => invokeResult<string>('get_log_dir'),
+  appendCrashLog: (
+    source: string,
+    message: string,
+    stack: string | null,
+    context: JsonValue | null
+  ) =>
+    invokeResult<string>('append_crash_log', {
+      source,
+      message,
+      stack,
+      context,
+    }),
   inspectSdkSetup: () =>
     invokeResult<GeneratedSdkSetupReport>('inspect_sdk_setup'),
   configureRequiredSdks: (config: SdkRootConfig, refresh: boolean) =>
