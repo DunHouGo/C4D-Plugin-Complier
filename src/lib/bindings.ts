@@ -113,6 +113,30 @@ async appendCrashLog(source: string, message: string, stack: string | null, cont
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * 从磁盘加载构建队列预设。
+ * 文件不存在时返回空集合。
+ */
+async loadBuildQueuePresets() : Promise<Result<BuildQueuePresetStore, RecoveryError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("load_build_queue_presets") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * 将构建队列预设保存到磁盘。
+ * 使用临时文件加重命名的原子写入方式。
+ */
+async saveBuildQueuePresets(store: BuildQueuePresetStore) : Promise<Result<null, RecoveryError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("save_build_queue_presets", { store }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async detectEnvironment() : Promise<Result<EnvironmentReport, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("detect_environment") };
@@ -258,6 +282,14 @@ language: string | null }
 export type BuildArtifact = { version: string | null; configuration: string | null; kind: string; path: string }
 export type BuildConfiguration = "Debug" | "Release" | "Both"
 export type BuildJobId = { id: string }
+/**
+ * 构建队列预设。
+ */
+export type BuildQueuePreset = { id: string; name: string; requests: BuildRequest[]; created_at: string }
+/**
+ * 构建队列预设集合。
+ */
+export type BuildQueuePresetStore = { presets: BuildQueuePreset[] }
 export type BuildRequest = { plugin_root: string; module_name: string; package_name: string; versions: string[]; configuration: BuildConfiguration; sdk_source: SdkSourceMode; package_mode: PackageMode; zip_enabled: boolean; clean_output: boolean; refresh_sdk_cache: boolean; output_dir: string | null }
 export type CompilerPlatform = "Windows" | "Macos" | "Linux" | "Unsupported"
 export type EnvironmentReport = { os: string; supported: boolean; compiler_platform: CompilerPlatform; cmake_preset: string | null; binary_extension: string | null; cmake: ToolStatus; visual_studio: ToolStatus; windows_sdk: ToolStatus; xcode: ToolStatus; clang: ToolStatus; python: ToolStatus; installed_sdk_zips: InstalledSdkZip[]; installed_c4d_versions: InstalledC4dVersion[]; cache_root: string }

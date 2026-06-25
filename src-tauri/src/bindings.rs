@@ -1,7 +1,9 @@
 use tauri_specta::{collect_commands, Builder};
 
 pub fn generate_bindings() -> Builder<tauri::Wry> {
-    use crate::commands::{compiler, diagnostics, notifications, preferences, recovery};
+    use crate::commands::{
+        build_queue, compiler, diagnostics, notifications, preferences, recovery,
+    };
 
     Builder::<tauri::Wry>::new().commands(collect_commands![
         preferences::greet,
@@ -13,6 +15,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         recovery::cleanup_old_recovery_files,
         diagnostics::get_log_dir,
         diagnostics::append_crash_log,
+        build_queue::load_build_queue_presets,
+        build_queue::save_build_queue_presets,
         compiler::detect_environment,
         compiler::resolve_sdk_versions,
         compiler::list_sdk_versions,

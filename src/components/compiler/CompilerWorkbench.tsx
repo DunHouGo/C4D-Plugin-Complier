@@ -121,6 +121,9 @@ export function CompilerWorkbench() {
   const sdkStartVersion = useCompilerStore(state => state.sdkStartVersion)
   const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
   const setBuildVersions = useCompilerStore(state => state.setBuildVersions)
+  const hydrateBuildQueuePresets = useCompilerStore(
+    state => state.hydrateBuildQueuePresets
+  )
   const [environment, setEnvironment] = useState<EnvironmentReport | null>(null)
   const [sdkResolutions, setSdkResolutions] = useState<SdkResolution[]>([])
   const [sdkVersions, setSdkVersions] = useState<SdkVersionOption[]>([])
@@ -209,6 +212,10 @@ export function CompilerWorkbench() {
     setQueuePresetName(preset?.name ?? '')
     setEditingQueuePresetName(false)
   }, [buildQueuePresets, selectedQueuePresetId])
+
+  useEffect(() => {
+    void hydrateBuildQueuePresets()
+  }, [hydrateBuildQueuePresets])
 
   useEffect(() => {
     if (!autoScrollLogs) return

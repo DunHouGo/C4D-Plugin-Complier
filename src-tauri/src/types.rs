@@ -29,6 +29,29 @@ pub struct AppPreferences {
     pub language: Option<String>,
 }
 
+/// 构建队列预设。
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct BuildQueuePreset {
+    pub id: String,
+    pub name: String,
+    pub requests: Vec<BuildRequest>,
+    pub created_at: String,
+}
+
+/// 构建队列预设集合。
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct BuildQueuePresetStore {
+    pub presets: Vec<BuildQueuePreset>,
+}
+
+impl Default for BuildQueuePresetStore {
+    fn default() -> Self {
+        Self {
+            presets: Vec::new(),
+        }
+    }
+}
+
 // ============================================================================
 // C4D 插件编译器
 // ============================================================================

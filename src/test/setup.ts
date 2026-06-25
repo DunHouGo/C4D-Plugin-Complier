@@ -55,6 +55,14 @@ vi.mock('@/lib/tauri-bindings', () => ({
     cleanupOldRecoveryFiles: vi
       .fn()
       .mockResolvedValue({ status: 'ok', data: 0 }),
+    loadBuildQueuePresets: vi.fn().mockResolvedValue({
+      status: 'ok',
+      data: { presets: [] },
+    }),
+    saveBuildQueuePresets: vi.fn().mockResolvedValue({
+      status: 'ok',
+      data: null,
+    }),
     detectEnvironment: vi.fn().mockResolvedValue({
       status: 'ok',
       data: {

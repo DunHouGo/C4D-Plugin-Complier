@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import type { BuildArtifact, BuildRequest } from '@/lib/tauri-bindings'
+import {
+  commands,
+  type BuildArtifact,
+  type BuildRequest,
+} from '@/lib/tauri-bindings'
 
 export const DEFAULT_SDK_START_VERSION = '2024.4'
 export type BuildQueueStatus = 'queued' | 'running' | 'success' | 'failed'
@@ -58,6 +62,7 @@ interface CompilerState {
   updatePluginRoot: (pluginRoot: string) => void
   setSdkStartVersion: (version: string, availableVersions: string[]) => void
   setBuildVersions: (versions: string[]) => void
+  hydrateBuildQueuePresets: () => Promise<void>
   saveBuildQueuePreset: (name?: string, id?: string) => string | null
   createBuildQueuePreset: (name?: string) => string
   renameBuildQueuePreset: (id: string, name: string) => void
@@ -71,7 +76,7 @@ export const useCompilerStore = create<CompilerState>()(
       request: defaultBuildRequest,
       artifacts: [],
       buildQueue: [],
-      buildQueuePresets: loadBuildQueuePresets(),
+      buildQueuePresets: loadLegacyBuildQueuePresets(),
       sdkStartVersion: DEFAULT_SDK_START_VERSION,
 
       setRequest: request => set({ request }, undefined, 'setRequest'),
@@ -245,6 +250,36 @@ export const useCompilerStore = create<CompilerState>()(
           'setSdkStartVersion'
         ),
 
+      hydrateBuildQueuePresets: async () => {
+        const legacyPresets = loadLegacyBuildQueuePresets()
+        const result = await commands.loadBuildQueuePresets()
+        if (result.status === 'error') {
+          if (legacyPresets.length > 0) {
+            set(
+              { buildQueuePresets: legacyPresets },
+              undefined,
+              'hydrateBuildQueuePresets'
+            )
+          }
+          return
+        }
+
+        const diskPresets = result.data.presets
+          .map(buildQueuePresetFromDisk)
+          .filter(isBuildQueuePreset)
+        const buildQueuePresets =
+          diskPresets.length > 0 ? diskPresets : legacyPresets
+        if (buildQueuePresets.length > 0 && diskPresets.length === 0) {
+          void persistBuildQueuePresets(buildQueuePresets)
+        }
+
+        set(
+          { buildQueuePresets },
+          undefined,
+          'hydrateBuildQueuePresets'
+        )
+      },
+
       saveBuildQueuePreset: (name, id) => {
         let presetId: string | null = null
         set(
@@ -272,7 +307,7 @@ export const useCompilerStore = create<CompilerState>()(
                   preset.id !== nextPreset.id && preset.name !== nextPreset.name
               ),
             ]
-            saveBuildQueuePresets(buildQueuePresets)
+            void persistBuildQueuePresets(buildQueuePresets)
             return { buildQueuePresets }
           },
           undefined,
@@ -292,7 +327,7 @@ export const useCompilerStore = create<CompilerState>()(
             )
             presetId = nextPreset.id
             const buildQueuePresets = [nextPreset, ...state.buildQueuePresets]
-            saveBuildQueuePresets(buildQueuePresets)
+            void persistBuildQueuePresets(buildQueuePresets)
             return { buildQueuePresets }
           },
           undefined,
@@ -312,7 +347,7 @@ export const useCompilerStore = create<CompilerState>()(
             const buildQueuePresets = state.buildQueuePresets.map(preset =>
               preset.id === id ? { ...preset, name: trimmedName } : preset
             )
-            saveBuildQueuePresets(buildQueuePresets)
+            void persistBuildQueuePresets(buildQueuePresets)
             return { buildQueuePresets }
           },
           undefined,
@@ -347,7 +382,7 @@ export const useCompilerStore = create<CompilerState>()(
             const buildQueuePresets = state.buildQueuePresets.filter(
               preset => preset.id !== id
             )
-            saveBuildQueuePresets(buildQueuePresets)
+            void persistBuildQueuePresets(buildQueuePresets)
             return { buildQueuePresets }
           },
           undefined,
@@ -427,7 +462,14 @@ function createBuildQueuePreset(
 
 const BUILD_QUEUE_PRESETS_KEY = 'c4d-plugin-compiler.buildQueuePresets'
 
-function loadBuildQueuePresets(): BuildQueuePreset[] {
+interface DiskBuildQueuePreset {
+  id: string
+  name: string
+  requests: BuildRequest[]
+  created_at: string
+}
+
+function loadLegacyBuildQueuePresets(): BuildQueuePreset[] {
   if (typeof window === 'undefined') {
     return []
   }
@@ -447,12 +489,29 @@ function loadBuildQueuePresets(): BuildQueuePreset[] {
   }
 }
 
-function saveBuildQueuePresets(presets: BuildQueuePreset[]) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
+async function persistBuildQueuePresets(presets: BuildQueuePreset[]) {
   window.localStorage.setItem(BUILD_QUEUE_PRESETS_KEY, JSON.stringify(presets))
+  await commands.saveBuildQueuePresets({
+    presets: presets.map(buildQueuePresetToDisk),
+  })
+}
+
+function buildQueuePresetToDisk(preset: BuildQueuePreset): DiskBuildQueuePreset {
+  return {
+    id: preset.id,
+    name: preset.name,
+    requests: preset.requests.map(cloneBuildRequest),
+    created_at: preset.createdAt,
+  }
+}
+
+function buildQueuePresetFromDisk(preset: DiskBuildQueuePreset): BuildQueuePreset {
+  return {
+    id: preset.id,
+    name: preset.name,
+    requests: preset.requests.map(cloneBuildRequest),
+    createdAt: preset.created_at,
+  }
 }
 
 function isBuildQueuePreset(value: unknown): value is BuildQueuePreset {

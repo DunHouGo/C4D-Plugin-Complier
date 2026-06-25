@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 修复构建队列预设重启后丢失的问题：预设现在持久化到应用数据目录的 JSON 文件中，并会自动迁移旧的 localStorage 数据。
+- 修复 macOS 2024.4 legacy SDK 偶发缺少 framework `generated/hxx/register.cpp` 导致 Xcode 构建失败的问题：检测到缺失生成文件后会先运行对应 framework 的 source processor，再重试插件构建。
 - 修复 macOS 发布版从 Finder 启动时检测不到 Homebrew CMake 的问题：环境检测现在会在 `PATH` 之外继续检查 `/opt/homebrew/bin/cmake`、`/usr/local/bin/cmake` 和 CMake.app。
 - 调整 SDK 解析优先级：优先使用 SDK Root 中已解压或已下载的官方扩展 SDK，其次使用 Maxon 官方下载地址，本机 Cinema 4D 安装目录中的 `sdk.zip` 只作为最后兼容兜底来源。
 - 修复 SDK 一键配置时后台任务 panic 可能导致发布版 App 直接闪退的问题，配置错误现在会返回到界面提示。

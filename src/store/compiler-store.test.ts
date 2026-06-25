@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { commands } from '@/lib/tauri-bindings'
 import {
   DEFAULT_SDK_START_VERSION,
   defaultBuildRequest,
@@ -15,6 +16,14 @@ describe('CompilerStore', () => {
       sdkStartVersion: DEFAULT_SDK_START_VERSION,
     })
     window.localStorage.clear()
+    vi.mocked(commands.loadBuildQueuePresets).mockResolvedValue({
+      status: 'ok',
+      data: { presets: [] },
+    })
+    vi.mocked(commands.saveBuildQueuePresets).mockResolvedValue({
+      status: 'ok',
+      data: null,
+    })
   })
 
   it('detects module and package names from plugin root', () => {
@@ -209,5 +218,72 @@ describe('CompilerStore', () => {
     expect(useCompilerStore.getState().buildQueue[0]?.request.versions).toEqual(
       ['2025', '2026']
     )
+    expect(commands.saveBuildQueuePresets).toHaveBeenCalled()
+  })
+
+  it('hydrates build queue presets from backend storage', async () => {
+    vi.mocked(commands.loadBuildQueuePresets).mockResolvedValue({
+      status: 'ok',
+      data: {
+        presets: [
+          {
+            id: 'preset-1',
+            name: 'Loaded preset',
+            requests: [
+              {
+                ...defaultBuildRequest,
+                package_name: 'Loaded',
+                versions: ['2026'],
+              },
+            ],
+            created_at: '2026-06-25T00:00:00.000Z',
+          },
+        ],
+      },
+    })
+
+    const { hydrateBuildQueuePresets } = useCompilerStore.getState()
+
+    await hydrateBuildQueuePresets()
+
+    expect(useCompilerStore.getState().buildQueuePresets[0]).toMatchObject({
+      id: 'preset-1',
+      name: 'Loaded preset',
+      createdAt: '2026-06-25T00:00:00.000Z',
+    })
+    expect(useCompilerStore.getState().buildQueuePresets[0]?.requests[0]).toMatchObject(
+      {
+        package_name: 'Loaded',
+      }
+    )
+  })
+
+  it('falls back to local storage presets and migrates them', async () => {
+    window.localStorage.setItem(
+      'c4d-plugin-compiler.buildQueuePresets',
+      JSON.stringify([
+        {
+          id: 'legacy-preset',
+          name: 'Legacy preset',
+          createdAt: '2026-06-25T00:00:00.000Z',
+          requests: [
+            {
+              ...defaultBuildRequest,
+              package_name: 'Legacy',
+            },
+          ],
+        },
+      ])
+    )
+
+    const { hydrateBuildQueuePresets } = useCompilerStore.getState()
+
+    await hydrateBuildQueuePresets()
+
+    expect(useCompilerStore.getState().buildQueuePresets[0]).toMatchObject({
+      id: 'legacy-preset',
+      name: 'Legacy preset',
+    })
+    expect(commands.saveBuildQueuePresets).toHaveBeenCalled()
   })
 })

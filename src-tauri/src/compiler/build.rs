@@ -570,8 +570,9 @@ fn build_legacy_target_with_retry(
                 log,
                 job_id,
                 "toolchain",
-                "Legacy SDK generated files were created late; retrying the Xcode build once",
+                "Legacy SDK generated files are missing; running the source processor before retrying",
             );
+            recover_legacy_generated_files(sdk_root, &error, log, job_id)?;
             build_legacy_target(sdk_root, configuration, module_name, log, job_id)
         }
         Err(error) => Err(error),
@@ -786,6 +787,122 @@ fn is_missing_legacy_generated_file_error(error: &str) -> bool {
     error.contains("Build input file cannot be found")
         && error.contains("generated/hxx")
         && error.contains("register.cpp")
+}
+
+#[cfg(target_os = "macos")]
+fn recover_legacy_generated_files(
+    sdk_root: &Path,
+    error: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    let source_processor = sdk_root
+        .join("frameworks")
+        .join("settings")
+        .join("sourceprocessor")
+        .join("sourceprocessor.py");
+    if !source_processor.is_file() {
+        return Err(format!(
+            "Legacy SDK source processor was not found at {}",
+            source_processor.display()
+        ));
+    }
+
+    let framework_roots = missing_legacy_generated_framework_roots(error);
+    if framework_roots.is_empty() {
+        return Err("Missing legacy generated file could not be mapped to a framework".to_string());
+    }
+
+    let shim_dir = prepare_python_shim()?;
+    for framework_root in framework_roots {
+        if legacy_framework_generated_register_exists(&framework_root) {
+            log_sdk(
+                log,
+                job_id,
+                &format!(
+                    "Legacy generated register.cpp already exists for {}",
+                    framework_root.display()
+                ),
+            );
+            continue;
+        }
+
+        log_sdk(
+            log,
+            job_id,
+            &format!(
+                "Running legacy source processor for {}",
+                framework_root.display()
+            ),
+        );
+        let args = vec![
+            source_processor.display().to_string(),
+            framework_root.display().to_string(),
+        ];
+        run_command_with_path_prefix("python", &args, sdk_root, &shim_dir, log, job_id)?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn recover_legacy_generated_files(
+    _sdk_root: &Path,
+    _error: &str,
+    _log: LogCallback<'_>,
+    _job_id: &str,
+) -> Result<(), String> {
+    Ok(())
+}
+
+fn missing_legacy_generated_framework_roots(error: &str) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    for quoted in single_quoted_segments(error) {
+        if !(quoted.contains("generated/hxx") && quoted.ends_with("register.cpp")) {
+            continue;
+        }
+
+        let path = PathBuf::from(quoted);
+        if let Some(root) = legacy_framework_root_for_generated_file(&path) {
+            if !roots.contains(&root) {
+                roots.push(root);
+            }
+        }
+    }
+    roots
+}
+
+fn single_quoted_segments(text: &str) -> Vec<&str> {
+    let mut segments = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('\'') {
+        let after_start = &rest[start + 1..];
+        let Some(end) = after_start.find('\'') else {
+            break;
+        };
+        segments.push(&after_start[..end]);
+        rest = &after_start[end + 1..];
+    }
+    segments
+}
+
+fn legacy_framework_root_for_generated_file(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .find(|ancestor| {
+            ancestor
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension == "framework")
+        })
+        .map(Path::to_path_buf)
+}
+
+fn legacy_framework_generated_register_exists(framework_root: &Path) -> bool {
+    framework_root
+        .join("generated")
+        .join("hxx")
+        .join("register.cpp")
+        .is_file()
 }
 
 #[cfg(target_os = "macos")]
@@ -1228,6 +1345,21 @@ mod tests {
 
         assert!(summary.contains("unknown type name 'Bool'"));
         assert!(summary.contains("** BUILD FAILED **"));
+    }
+
+    #[test]
+    fn legacy_missing_generated_file_error_maps_to_framework_root() {
+        let error = "error: Build input file cannot be found: '/Users/dunhou/Documents/Maxon_SDK/2024_4/sdk/frameworks/modeling_geom.framework/generated/hxx/register.cpp'. Did you forget to declare this file as an output?";
+
+        let roots = missing_legacy_generated_framework_roots(error);
+
+        assert_eq!(roots.len(), 1);
+        assert_eq!(
+            roots[0],
+            PathBuf::from(
+                "/Users/dunhou/Documents/Maxon_SDK/2024_4/sdk/frameworks/modeling_geom.framework"
+            )
+        );
     }
 
     #[test]
