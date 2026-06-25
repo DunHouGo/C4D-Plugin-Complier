@@ -246,6 +246,18 @@ pub struct SdkSetupReport {
     pub summary: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub struct SdkSetupProgressEvent {
+    pub current: u32,
+    pub total: u32,
+    pub stage: String,
+    pub status: String,
+    pub version: Option<String>,
+    pub message: String,
+    pub detail: Option<String>,
+    pub percent: Option<f64>,
+}
+
 impl Default for AppPreferences {
     fn default() -> Self {
         Self {

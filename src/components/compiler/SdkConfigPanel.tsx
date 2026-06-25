@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
 import {
   CheckCircle2,
@@ -18,6 +19,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   commands,
   type InstalledC4dVersion,
+  type SdkSetupProgressEvent,
   type SdkSetupReport,
   type SdkVersionOption,
   type SetupRequirement,
@@ -84,6 +86,10 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
     'inspect' | 'configure' | null
   >(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [setupProgress, setSetupProgress] = useState<SdkSetupProgressEvent[]>(
+    []
+  )
+  const progressPanelRef = useRef<HTMLDivElement | null>(null)
   const setSdkStartVersion = useCompilerStore(state => state.setSdkStartVersion)
 
   const selectedOption = versions.find(
@@ -143,6 +149,53 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
     void loadSdkConfig()
   }, [loadSdkConfig])
 
+  useEffect(() => {
+    let cancelled = false
+    let didUnlisten = false
+    let unlisten: (() => void) | null = null
+
+    void listen<SdkSetupProgressEvent>('sdk://setup-progress', event => {
+      setSetupProgress(current =>
+        mergeSetupProgressEvents(current, event.payload)
+      )
+    })
+      .then(nextUnlisten => {
+        unlisten = nextUnlisten
+        if (cancelled) {
+          safeUnlisten()
+        }
+      })
+      .catch(error => {
+        logger.warn('Failed to register SDK setup progress listener', {
+          error,
+        })
+      })
+
+    return () => {
+      cancelled = true
+      safeUnlisten()
+    }
+
+    function safeUnlisten() {
+      if (!unlisten || didUnlisten) {
+        return
+      }
+
+      didUnlisten = true
+      try {
+        Promise.resolve(unlisten()).catch(error => {
+          logger.warn('Failed to unregister SDK setup progress listener', {
+            error,
+          })
+        })
+      } catch (error) {
+        logger.warn('Failed to unregister SDK setup progress listener', {
+          error,
+        })
+      }
+    }
+  }, [])
+
   async function saveRootConfig() {
     try {
       const result = await commands.saveSdkRootConfig({
@@ -196,7 +249,20 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
       return
     }
 
+    setSetupProgress([
+      {
+        current: 0,
+        total: 1,
+        stage: 'start',
+        status: 'running',
+        version: null,
+        message: t('sdk.progress.start'),
+        detail: null,
+        percent: 0,
+      },
+    ])
     setActiveAction('configure')
+    revealSetupProgress()
     logger.info('Configuring required SDKs', { sdkRoot })
     try {
       const result = await commands.configureRequiredSdks(
@@ -209,6 +275,27 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
         applySdkVersions(result.data.versions, result.data.prepared_versions)
         setSetupReport(result.data)
         setMessage(result.data.summary)
+        setSetupProgress(current => {
+          const last = current.at(-1)
+          if (last?.stage === 'complete') {
+            return current
+          }
+
+          return mergeSetupProgressEvents(
+            current,
+            {
+              current: last?.total ?? 1,
+              total: last?.total ?? 1,
+              stage: 'complete',
+              status: 'success',
+              version: null,
+              message: result.data.summary,
+              detail: null,
+              percent: 1,
+            },
+            true
+          )
+        })
         logger.info('SDK setup configuration completed', {
           summary: result.data.summary,
           preparedVersions: result.data.prepared_versions.map(item => ({
@@ -221,14 +308,55 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
         })
       } else {
         setMessage(result.error)
+        setSetupProgress(current =>
+          mergeSetupProgressEvents(
+            current,
+            {
+              current: current.at(-1)?.current ?? 0,
+              total: current.at(-1)?.total ?? 1,
+              stage: 'complete',
+              status: 'error',
+              version: null,
+              message: result.error,
+              detail: null,
+              percent: current.at(-1)?.percent ?? null,
+            },
+            true
+          )
+        )
         logger.error('SDK setup configuration failed', { error: result.error })
       }
     } catch (error) {
       setMessage(errorMessage(error))
+      setSetupProgress(current =>
+        mergeSetupProgressEvents(
+          current,
+          {
+            current: current.at(-1)?.current ?? 0,
+            total: current.at(-1)?.total ?? 1,
+            stage: 'complete',
+            status: 'error',
+            version: null,
+            message: errorMessage(error),
+            detail: null,
+            percent: current.at(-1)?.percent ?? null,
+          },
+          true
+        )
+      )
       void logger.recordCrash('sdk-setup-configure', error, { sdkRoot })
     } finally {
       setActiveAction(null)
     }
+  }
+
+  function revealSetupProgress() {
+    window.requestAnimationFrame(() => {
+      progressPanelRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
+    })
   }
 
   function applySdkVersions(
@@ -297,6 +425,14 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
             <HelpHint text={t('sdk.help.configure')} />
           </Button>
         </div>
+        {setupProgress.length > 0 ? (
+          <div ref={progressPanelRef}>
+            <SdkSetupProgressPanel
+              events={setupProgress}
+              active={activeAction === 'configure'}
+            />
+          </div>
+        ) : null}
         <div
           className={cn(
             'grid min-w-0 gap-2',
@@ -326,12 +462,7 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
         </div>
       </div>
 
-      <div
-        className={cn(
-          'space-y-2 rounded-md border bg-muted/20',
-          settingsLayout ? 'p-2.5' : 'p-3'
-        )}
-      >
+      <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
         <div className="text-xs font-medium">{t('sdk.rules.title')}</div>
         <div
           className={cn(
@@ -348,11 +479,13 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
         </div>
       </div>
 
-      <SetupChecklist
-        requirements={setupReport?.requirements ?? []}
-        loading={activeAction !== null}
-        wide={settingsLayout}
-      />
+      {activeAction === 'configure' ? null : (
+        <SetupChecklist
+          requirements={setupReport?.requirements ?? []}
+          loading={activeAction === 'inspect'}
+          wide={settingsLayout}
+        />
+      )}
 
       <div className="space-y-2">
         <FieldLabel
@@ -552,6 +685,27 @@ function c4dInstallLabel(sdkVersion: string) {
   return `Cinema 4D ${sdkVersion}`
 }
 
+function mergeSetupProgressEvents(
+  events: SdkSetupProgressEvent[],
+  next: SdkSetupProgressEvent,
+  alwaysAppend = false
+) {
+  const index = events.findIndex(
+    event => progressEventKey(event) === progressEventKey(next)
+  )
+  if (index !== -1 && !alwaysAppend) {
+    const updated = [...events]
+    updated[index] = next
+    return updated.slice(-6)
+  }
+
+  return [...events, next].slice(-6)
+}
+
+function progressEventKey(event: SdkSetupProgressEvent) {
+  return `${event.current}:${event.total}:${event.version ?? 'all'}:${event.stage}:${event.status}`
+}
+
 function SetupChecklist({
   requirements,
   loading,
@@ -625,6 +779,147 @@ function SetupChecklist({
       </div>
     </div>
   )
+}
+
+function SdkSetupProgressPanel({
+  events,
+  active,
+}: {
+  events: SdkSetupProgressEvent[]
+  active: boolean
+}) {
+  const { t } = useTranslation()
+  if (events.length === 0) {
+    return null
+  }
+
+  const current = events.at(-1)
+  if (!current) {
+    return null
+  }
+
+  const progressValue =
+    typeof current.percent === 'number'
+      ? Math.round(Math.max(0, Math.min(1, current.percent)) * 100)
+      : null
+  const total = Math.max(current.total, 1)
+  const currentIndex = Math.min(current.current, total)
+  const historyEvents = events
+    .slice(0, -1)
+    .filter(event => progressEventKey(event) !== progressEventKey(current))
+    .slice(-3)
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/20 p-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <SetupProgressIcon status={current.status} active={active} />
+            <span>{t('sdk.progress.title')}</span>
+          </div>
+          <div className="mt-1 break-words text-xs text-muted-foreground">
+            {progressLabel(current, t)}
+          </div>
+        </div>
+        <Badge variant={current.status === 'success' ? 'default' : 'outline'}>
+          {current.version
+            ? t('sdk.progress.versionCount', {
+                current: currentIndex,
+                total,
+              })
+            : t(`sdk.progress.status.${current.status}`, {
+                defaultValue: current.status,
+              })}
+        </Badge>
+      </div>
+      {progressValue !== null ? (
+        <div className="space-y-1">
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all',
+                current.status === 'error'
+                  ? 'bg-destructive'
+                  : current.status === 'warning'
+                    ? 'bg-yellow-500'
+                    : 'bg-primary'
+              )}
+              style={{ width: `${progressValue}%` }}
+            />
+          </div>
+          <div className="text-right text-[11px] text-muted-foreground">
+            {progressValue}%
+          </div>
+        </div>
+      ) : null}
+      {historyEvents.length > 0 ? (
+        <div className="space-y-1 border-t pt-2">
+          {historyEvents.map(event => (
+            <div
+              key={progressEventKey(event)}
+              className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-2 text-xs"
+            >
+              <SetupProgressIcon status={event.status} active={false} />
+              <div className="min-w-0">
+                <div className="break-words">{progressLabel(event, t)}</div>
+                {event.detail ? (
+                  <div
+                    className="truncate text-muted-foreground"
+                    title={event.detail}
+                  >
+                    {event.detail}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function SetupProgressIcon({
+  status,
+  active,
+}: {
+  status: string
+  active: boolean
+}) {
+  if (status === 'success') {
+    return <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-green-500" />
+  }
+
+  if (status === 'error') {
+    return <XCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+  }
+
+  if (status === 'warning') {
+    return (
+      <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-yellow-500" />
+    )
+  }
+
+  return (
+    <RefreshCw
+      className={cn(
+        'mt-0.5 size-3.5 shrink-0 text-primary',
+        active && 'animate-spin'
+      )}
+    />
+  )
+}
+
+function progressLabel(
+  event: SdkSetupProgressEvent,
+  t: ReturnType<typeof useTranslation>['t']
+) {
+  const key = `sdk.progress.stage.${event.stage}`
+  const label = t(key, {
+    version: event.version ?? '',
+    defaultValue: event.message,
+  })
+  return event.version ? `${event.version}: ${label}` : label
 }
 
 function RequirementIcon({ status }: { status: SetupRequirement['status'] }) {

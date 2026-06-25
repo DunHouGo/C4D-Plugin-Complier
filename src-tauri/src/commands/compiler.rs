@@ -59,10 +59,11 @@ pub async fn inspect_sdk_setup() -> Result<SdkSetupReport, String> {
 #[tauri::command]
 #[specta::specta]
 pub async fn configure_required_sdks(
+    app: AppHandle,
     config: SdkRootConfig,
     refresh: bool,
 ) -> Result<SdkSetupReport, String> {
-    run_compiler_task(move || sdk::configure_required_sdks(config, refresh)).await
+    run_compiler_task(move || sdk::configure_required_sdks(&app, config, refresh)).await
 }
 
 #[tauri::command]

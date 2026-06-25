@@ -152,6 +152,17 @@ export interface BuildFinishedEvent {
   message: string
 }
 
+export interface SdkSetupProgressEvent {
+  current: number
+  total: number
+  stage: string
+  status: string
+  version: string | null
+  message: string
+  detail: string | null
+  percent: number | null
+}
+
 /**
  * Helper to unwrap a Result type, throwing on error
  */

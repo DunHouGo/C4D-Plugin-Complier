@@ -2,17 +2,20 @@
 
 use std::collections::BTreeSet;
 use std::fs::File;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde_json::Value;
+use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
 use zip::ZipArchive;
 
 use crate::compiler::{parse_version_list, require_file};
 use crate::types::{
     BuildRequest, InstalledC4dVersion, SdkAutoConfigReport, SdkResolution, SdkResolutionSource,
-    SdkRootConfig, SdkSetupReport, SdkSourceConfig, SdkSourceOverride, SdkVersionOption,
+    SdkRootConfig, SdkSetupProgressEvent, SdkSetupReport, SdkSourceConfig, SdkSourceOverride,
+    SdkVersionOption,
 };
 
 mod config;
@@ -123,16 +126,57 @@ pub fn inspect_sdk_setup() -> Result<SdkSetupReport, String> {
 }
 
 pub fn configure_required_sdks(
+    app: &AppHandle,
     config: SdkRootConfig,
     refresh: bool,
 ) -> Result<SdkSetupReport, String> {
+    emit_setup_progress(
+        app,
+        SdkSetupProgress {
+            current: 0,
+            total: 1,
+            stage: "start",
+            status: "running",
+            version: None,
+            message: "Starting SDK setup".to_string(),
+            detail: None,
+            percent: Some(0.0),
+        },
+    );
     let config = save_sdk_root_config(config)?;
+    emit_setup_progress(
+        app,
+        SdkSetupProgress {
+            current: 0,
+            total: 1,
+            stage: "save_config",
+            status: "running",
+            version: None,
+            message: "Saved SDK root configuration".to_string(),
+            detail: config.sdk_root.clone(),
+            percent: Some(0.05),
+        },
+    );
     log::info!(
         "Configuring required SDKs with root {:?}, refresh={refresh}",
         config.sdk_root
     );
+    emit_setup_progress(
+        app,
+        SdkSetupProgress {
+            current: 0,
+            total: 1,
+            stage: "detect_c4d",
+            status: "running",
+            version: None,
+            message: "Detecting Cinema 4D installations".to_string(),
+            detail: None,
+            percent: Some(0.1),
+        },
+    );
     let installed_versions = detect_installed_c4d_versions();
     let target_versions = required_sdk_versions(&installed_versions);
+    let total_versions = target_versions.len().max(1);
     log::info!(
         "Detected {} Cinema 4D install(s); required SDK versions: {}",
         installed_versions.len(),
@@ -141,10 +185,42 @@ pub fn configure_required_sdks(
     let mut prepared_versions = Vec::new();
     let mut setup_errors = Vec::new();
 
-    for version in target_versions {
+    for (index, version) in target_versions.iter().enumerate() {
+        let current = (index + 1) as u32;
+        let total = total_versions as u32;
+        emit_setup_progress(
+            app,
+            SdkSetupProgress {
+                current,
+                total,
+                stage: "prepare",
+                status: "running",
+                version: Some(version.clone()),
+                message: format!("Preparing SDK {version}"),
+                detail: None,
+                percent: Some(setup_percent(index, total_versions, 0.0)),
+            },
+        );
         log::info!("Preparing SDK {version}");
-        match prepare_sdk(&version, refresh) {
+        let progress = |event: SdkSetupProgress| emit_setup_progress(app, event);
+        match prepare_sdk_with_progress(version, refresh, current, total, &progress) {
             Ok(resolution) => {
+                emit_setup_progress(
+                    app,
+                    SdkSetupProgress {
+                        current,
+                        total,
+                        stage: "prepare",
+                        status: "success",
+                        version: Some(version.clone()),
+                        message: format!("SDK {version} is ready"),
+                        detail: resolution
+                            .sdk_root
+                            .clone()
+                            .or(resolution.archive_path.clone()),
+                        percent: Some(setup_percent(index, total_versions, 1.0)),
+                    },
+                );
                 log::info!(
                     "Prepared SDK {version}: source={:?}, sdk_root={:?}, archive={:?}, status={}",
                     resolution.source,
@@ -155,14 +231,27 @@ pub fn configure_required_sdks(
                 prepared_versions.push(resolution);
             }
             Err(error) => {
+                emit_setup_progress(
+                    app,
+                    SdkSetupProgress {
+                        current,
+                        total,
+                        stage: "prepare",
+                        status: "error",
+                        version: Some(version.clone()),
+                        message: format!("SDK {version} setup failed"),
+                        detail: Some(error.clone()),
+                        percent: Some(setup_percent(index, total_versions, 1.0)),
+                    },
+                );
                 log::error!("Failed to prepare SDK {version}: {error}");
                 setup_errors.push(format!("SDK {version}: {error}"));
                 prepared_versions.push(SdkResolution {
-                    version: version.clone(),
+                    version: version.to_string(),
                     source: SdkResolutionSource::OfficialDownload,
                     sdk_root: None,
                     archive_path: None,
-                    download_url: generated_download_url_if_known(&version),
+                    download_url: generated_download_url_if_known(version),
                     status: error,
                 });
             }
@@ -177,6 +266,23 @@ pub fn configure_required_sdks(
             setup_errors.join("; ")
         );
     }
+    emit_setup_progress(
+        app,
+        SdkSetupProgress {
+            current: total_versions as u32,
+            total: total_versions as u32,
+            stage: "complete",
+            status: if setup_errors.is_empty() {
+                "success"
+            } else {
+                "warning"
+            },
+            version: None,
+            message: report.summary.clone(),
+            detail: None,
+            percent: Some(1.0),
+        },
+    );
 
     Ok(report)
 }
@@ -212,10 +318,30 @@ pub fn resolve_sdk_versions(request: &BuildRequest) -> Vec<SdkResolution> {
 }
 
 pub fn prepare_sdk(version: &str, refresh: bool) -> Result<SdkResolution, String> {
+    prepare_sdk_with_progress(version, refresh, 1, 1, &|_| {})
+}
+
+fn prepare_sdk_with_progress(
+    version: &str,
+    refresh: bool,
+    current: u32,
+    total: u32,
+    progress: &dyn Fn(SdkSetupProgress),
+) -> Result<SdkResolution, String> {
     let resolution = resolve_sdk_version(version, refresh);
     if let Some(root) = &resolution.sdk_root {
         let path = PathBuf::from(root);
         if is_cmake_sdk_root(&path) || is_legacy_sdk_root(&path) {
+            progress(SdkSetupProgress {
+                current,
+                total,
+                stage: "use_cache",
+                status: "success",
+                version: Some(version.to_string()),
+                message: format!("Using existing SDK {version}"),
+                detail: Some(root.clone()),
+                percent: None,
+            });
             return Ok(resolution);
         }
     }
@@ -225,16 +351,37 @@ pub fn prepare_sdk(version: &str, refresh: bool) -> Result<SdkResolution, String
             let Some(archive_path) = resolution.archive_path.clone() else {
                 return Err(format!("SDK {version} did not resolve to an archive path"));
             };
-            match extract_sdk_archive(Path::new(&archive_path), version, refresh) {
+            progress(SdkSetupProgress {
+                current,
+                total,
+                stage: "extract",
+                status: "running",
+                version: Some(version.to_string()),
+                message: format!("Extracting SDK {version}"),
+                detail: Some(archive_path.clone()),
+                percent: None,
+            });
+            match extract_sdk_archive(
+                Path::new(&archive_path),
+                version,
+                refresh,
+                current,
+                total,
+                progress,
+            ) {
                 Ok(sdk_root) => Ok(SdkResolution {
                     sdk_root: Some(sdk_root.display().to_string()),
                     status: "ready".to_string(),
                     ..resolution
                 }),
-                Err(extract_error) => prepare_official_sdk(version, Some(extract_error)),
+                Err(extract_error) => {
+                    prepare_official_sdk(version, Some(extract_error), current, total, progress)
+                }
             }
         }
-        SdkResolutionSource::OfficialDownload => prepare_official_sdk(version, None),
+        SdkResolutionSource::OfficialDownload => {
+            prepare_official_sdk(version, None, current, total, progress)
+        }
         SdkResolutionSource::Cache => Ok(resolution),
     }
 }
@@ -242,18 +389,22 @@ pub fn prepare_sdk(version: &str, refresh: bool) -> Result<SdkResolution, String
 fn prepare_official_sdk(
     version: &str,
     previous_error: Option<String>,
+    current: u32,
+    total: u32,
+    progress: &dyn Fn(SdkSetupProgress),
 ) -> Result<SdkResolution, String> {
     let Some(download_url) = find_official_cpp_sdk_url(version) else {
         return Err(previous_error
             .unwrap_or_else(|| format!("SDK {version} did not resolve to a download URL")));
     };
 
-    let archive_path = download_sdk(&download_url, version)?;
-    let sdk_root = extract_sdk_archive(&archive_path, version, true).map_err(|error| {
-        previous_error
-            .map(|previous| format!("{previous}; official SDK fallback failed: {error}"))
-            .unwrap_or(error)
-    })?;
+    let archive_path = download_sdk(&download_url, version, current, total, progress)?;
+    let sdk_root = extract_sdk_archive(&archive_path, version, true, current, total, progress)
+        .map_err(|error| {
+            previous_error
+                .map(|previous| format!("{previous}; official SDK fallback failed: {error}"))
+                .unwrap_or(error)
+        })?;
 
     Ok(SdkResolution {
         version: version.to_string(),
@@ -447,8 +598,24 @@ fn find_configured_sdk_archive(configured_root: &Path, version: &str) -> Option<
         })
 }
 
-fn download_sdk(download_url: &str, version: &str) -> Result<PathBuf, String> {
+fn download_sdk(
+    download_url: &str,
+    version: &str,
+    current: u32,
+    total: u32,
+    progress: &dyn Fn(SdkSetupProgress),
+) -> Result<PathBuf, String> {
     let archive_path = sdk_archive_path(version);
+    progress(SdkSetupProgress {
+        current,
+        total,
+        stage: "download",
+        status: "running",
+        version: Some(version.to_string()),
+        message: format!("Downloading SDK {version}"),
+        detail: Some(download_url.to_string()),
+        percent: None,
+    });
     log::info!(
         "Downloading SDK {version} from {download_url} to {}",
         archive_path.display()
@@ -460,6 +627,16 @@ fn download_sdk(download_url: &str, version: &str) -> Result<PathBuf, String> {
 
     if archive_path.is_file() {
         if sdk_archive_is_readable(&archive_path) {
+            progress(SdkSetupProgress {
+                current,
+                total,
+                stage: "download",
+                status: "success",
+                version: Some(version.to_string()),
+                message: format!("Using cached SDK archive {version}"),
+                detail: Some(archive_path.display().to_string()),
+                percent: None,
+            });
             log::info!(
                 "Using existing readable SDK archive {}",
                 archive_path.display()
@@ -509,12 +686,56 @@ fn download_sdk(download_url: &str, version: &str) -> Result<PathBuf, String> {
         ));
     }
 
+    let content_length = response.content_length();
     let mut file = File::create(&temp_path)
         .map_err(|error| format!("Failed to create {}: {error}", temp_path.display()))?;
-    response
-        .copy_to(&mut file)
-        .map_err(|error| format!("Failed to write {}: {error}", temp_path.display()))?;
+    let mut downloaded = 0_u64;
+    let mut buffer = [0_u8; 128 * 1024];
+    let mut last_percent = 0_u64;
+    loop {
+        let length = response
+            .read(&mut buffer)
+            .map_err(|error| format!("Failed to download {download_url}: {error}"))?;
+        if length == 0 {
+            break;
+        }
+
+        file.write_all(&buffer[..length])
+            .map_err(|error| format!("Failed to write {}: {error}", temp_path.display()))?;
+        downloaded += length as u64;
+
+        if let Some(total_bytes) = content_length {
+            let percent = (downloaded.saturating_mul(100) / total_bytes.max(1)).min(100);
+            if percent >= last_percent + 5 || percent == 100 {
+                last_percent = percent;
+                progress(SdkSetupProgress {
+                    current,
+                    total,
+                    stage: "download",
+                    status: "running",
+                    version: Some(version.to_string()),
+                    message: format!("Downloading SDK {version}"),
+                    detail: Some(format!(
+                        "{} / {} MB",
+                        bytes_to_mb(downloaded),
+                        bytes_to_mb(total_bytes)
+                    )),
+                    percent: Some(percent as f64 / 100.0),
+                });
+            }
+        }
+    }
     drop(file);
+    progress(SdkSetupProgress {
+        current,
+        total,
+        stage: "verify",
+        status: "running",
+        version: Some(version.to_string()),
+        message: format!("Verifying SDK archive {version}"),
+        detail: Some(temp_path.display().to_string()),
+        percent: Some(0.0),
+    });
     log::info!("SDK {version} downloaded to {}", temp_path.display());
 
     if !sdk_archive_is_readable(&temp_path) {
@@ -533,6 +754,16 @@ fn download_sdk(download_url: &str, version: &str) -> Result<PathBuf, String> {
         )
     })?;
 
+    progress(SdkSetupProgress {
+        current,
+        total,
+        stage: "download",
+        status: "success",
+        version: Some(version.to_string()),
+        message: format!("SDK {version} archive is ready"),
+        detail: Some(archive_path.display().to_string()),
+        percent: Some(1.0),
+    });
     log::info!("SDK {version} archive ready at {}", archive_path.display());
     Ok(archive_path)
 }
@@ -548,18 +779,43 @@ fn extract_sdk_archive(
     archive_path: &Path,
     version: &str,
     refresh: bool,
+    current: u32,
+    total: u32,
+    progress: &dyn Fn(SdkSetupProgress),
 ) -> Result<PathBuf, String> {
     let target_root = sdk_cache_root(version);
-    extract_sdk_archive_to(archive_path, &target_root, refresh)
+    extract_sdk_archive_to(
+        archive_path,
+        &target_root,
+        version,
+        refresh,
+        current,
+        total,
+        progress,
+    )
 }
 
 fn extract_sdk_archive_to(
     archive_path: &Path,
     target_root: &Path,
+    version: &str,
     refresh: bool,
+    current: u32,
+    total: u32,
+    progress: &dyn Fn(SdkSetupProgress),
 ) -> Result<PathBuf, String> {
     require_file(archive_path)?;
     let temp_root = target_root.with_extension("extracting");
+    progress(SdkSetupProgress {
+        current,
+        total,
+        stage: "extract",
+        status: "running",
+        version: Some(version.to_string()),
+        message: format!("Extracting SDK {version}"),
+        detail: Some(archive_path.display().to_string()),
+        percent: Some(0.0),
+    });
     log::info!(
         "Extracting SDK archive {} to {}",
         archive_path.display(),
@@ -576,11 +832,31 @@ fn extract_sdk_archive_to(
 
     if target_root.exists() {
         if is_cmake_sdk_root(target_root) || is_legacy_sdk_root(target_root) {
+            progress(SdkSetupProgress {
+                current,
+                total,
+                stage: "extract",
+                status: "success",
+                version: Some(version.to_string()),
+                message: format!("Using existing SDK root {version}"),
+                detail: Some(target_root.display().to_string()),
+                percent: Some(1.0),
+            });
             log::info!("Using existing SDK root {}", target_root.display());
             return Ok(target_root.to_path_buf());
         }
 
         if let Some(nested) = find_nested_sdk_root(target_root) {
+            progress(SdkSetupProgress {
+                current,
+                total,
+                stage: "extract",
+                status: "success",
+                version: Some(version.to_string()),
+                message: format!("Using existing nested SDK root {version}"),
+                detail: Some(nested.display().to_string()),
+                percent: Some(1.0),
+            });
             log::info!("Using existing nested SDK root {}", nested.display());
             return Ok(nested);
         }
@@ -622,6 +898,16 @@ fn extract_sdk_archive_to(
             let _ = std::fs::remove_dir_all(&temp_root);
             format!("Failed to extract SDK zip: {error}")
         })?;
+        progress(SdkSetupProgress {
+            current,
+            total,
+            stage: "extract",
+            status: "running",
+            version: Some(version.to_string()),
+            message: format!("Validating extracted SDK {version}"),
+            detail: Some(temp_root.display().to_string()),
+            percent: Some(0.85),
+        });
 
         if !is_cmake_sdk_root(&temp_root)
             && !is_legacy_sdk_root(&temp_root)
@@ -653,11 +939,31 @@ fn extract_sdk_archive_to(
     }
 
     if is_cmake_sdk_root(target_root) || is_legacy_sdk_root(target_root) {
+        progress(SdkSetupProgress {
+            current,
+            total,
+            stage: "extract",
+            status: "success",
+            version: Some(version.to_string()),
+            message: format!("SDK {version} root is ready"),
+            detail: Some(target_root.display().to_string()),
+            percent: Some(1.0),
+        });
         log::info!("SDK root ready at {}", target_root.display());
         return Ok(target_root.to_path_buf());
     }
 
     if let Some(nested) = find_nested_sdk_root(target_root) {
+        progress(SdkSetupProgress {
+            current,
+            total,
+            stage: "extract",
+            status: "success",
+            version: Some(version.to_string()),
+            message: format!("Nested SDK {version} root is ready"),
+            detail: Some(nested.display().to_string()),
+            percent: Some(1.0),
+        });
         log::info!("Nested SDK root ready at {}", nested.display());
         return Ok(nested);
     }
@@ -814,6 +1120,42 @@ fn required_sdk_versions(installed_versions: &[InstalledC4dVersion]) -> Vec<Stri
     versions.into_iter().collect()
 }
 
+struct SdkSetupProgress {
+    current: u32,
+    total: u32,
+    stage: &'static str,
+    status: &'static str,
+    version: Option<String>,
+    message: String,
+    detail: Option<String>,
+    percent: Option<f64>,
+}
+
+fn emit_setup_progress(app: &AppHandle, progress: SdkSetupProgress) {
+    let _ = app.emit(
+        "sdk://setup-progress",
+        SdkSetupProgressEvent {
+            current: progress.current,
+            total: progress.total,
+            stage: progress.stage.to_string(),
+            status: progress.status.to_string(),
+            version: progress.version,
+            message: progress.message,
+            detail: progress.detail,
+            percent: progress.percent,
+        },
+    );
+}
+
+fn setup_percent(version_index: usize, total_versions: usize, version_fraction: f64) -> f64 {
+    let version_span = 0.85 / total_versions.max(1) as f64;
+    (0.1 + version_span * (version_index as f64 + version_fraction)).min(0.95)
+}
+
+fn bytes_to_mb(bytes: u64) -> String {
+    format!("{:.1}", bytes as f64 / 1_048_576.0)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -923,7 +1265,8 @@ mod tests {
         create_minimal_sdk_archive(&archive, "Cinema_4D_CPP_SDK_2026_0_0");
         let target = root.path().join("cache").join("sdk");
 
-        let extracted = extract_sdk_archive_to(&archive, &target, false).expect("extract SDK");
+        let extracted = extract_sdk_archive_to(&archive, &target, "2026", false, 1, 1, &|_| {})
+            .expect("extract SDK");
 
         assert!(target.is_dir());
         assert_eq!(extracted, target.join("Cinema_4D_CPP_SDK_2026_0_0"));
@@ -937,7 +1280,8 @@ mod tests {
         create_invalid_sdk_archive(&archive);
         let target = root.path().join("cache").join("sdk");
 
-        let error = extract_sdk_archive_to(&archive, &target, false).expect_err("invalid SDK");
+        let error = extract_sdk_archive_to(&archive, &target, "2026", false, 1, 1, &|_| {})
+            .expect_err("invalid SDK");
 
         assert!(error.contains("Extracted SDK root is incomplete or invalid"));
         assert!(!target.exists());
