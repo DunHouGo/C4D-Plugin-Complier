@@ -194,7 +194,7 @@ fn prepare_module_alias(request: &BuildRequest, alias_name: &str) -> Result<Modu
         .canonicalize()
         .map_err(|error| format!("Failed to resolve plugin root: {error}"))?;
 
-    if link.exists() {
+    if path_entry_exists(&link) {
         if same_path(&link, &target) {
             return Ok(ModuleAlias {
                 modules_dir: modules_root,
@@ -203,16 +203,25 @@ fn prepare_module_alias(request: &BuildRequest, alias_name: &str) -> Result<Modu
         remove_junction(&link)?;
     }
 
-    let status = hidden_command("cmd")
+    let output = hidden_command("cmd")
         .args(["/c", "mklink", "/J"])
         .arg(&link)
         .arg(&target)
-        .status()
+        .output()
         .map_err(|error| format!("Failed to create module junction: {error}"))?;
-    if !status.success() {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let details = format!("{stdout}\n{stderr}").trim().to_string();
         return Err(format!(
-            "Failed to create module junction: {}",
-            link.display()
+            "Failed to create module junction {} -> {}{}",
+            link.display(),
+            target.display(),
+            if details.is_empty() {
+                String::new()
+            } else {
+                format!(": {details}")
+            }
         ));
     }
 
@@ -235,7 +244,7 @@ fn prepare_module_alias(request: &BuildRequest, alias_name: &str) -> Result<Modu
         .canonicalize()
         .map_err(|error| format!("Failed to resolve plugin root: {error}"))?;
 
-    if link.exists() {
+    if path_entry_exists(&link) {
         if same_path(&link, &target) {
             return Ok(ModuleAlias {
                 modules_dir: modules_root,
@@ -266,6 +275,10 @@ fn same_path(left: &Path, right: &Path) -> bool {
     left.canonicalize()
         .ok()
         .is_some_and(|left_path| left_path == right)
+}
+
+fn path_entry_exists(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
 }
 
 fn remove_stale_module_aliases(modules_root: &Path, alias_name: &str) -> Result<(), String> {
@@ -1715,6 +1728,25 @@ mod tests {
         drop(listener);
         assert!(target.path().join("projectdefinition.txt").is_file());
         assert!(!target.path().join("fsmonitor--daemon.ipc").exists());
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn path_entry_exists_detects_broken_junction() {
+        let root = TempTree::new("c4d-broken-junction");
+        let link = root.path().join("plugin-link");
+        let missing_target = root.path().join("missing-plugin-root");
+
+        let status = hidden_command("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(&link)
+            .arg(&missing_target)
+            .status()
+            .unwrap();
+
+        assert!(status.success());
+        assert!(!link.exists());
+        assert!(path_entry_exists(&link));
     }
 
     #[test]
