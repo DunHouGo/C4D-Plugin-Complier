@@ -79,6 +79,7 @@ git push origin v0.1.7
 GitHub Actions will:
 
 - Install dependencies with `npm ci`.
+- Synchronize `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` from the pushed `v*` tag before building, so updater manifests use the release tag version even if a local version bump was missed.
 - Run `npm exec -- vp exec tsc --noEmit`.
 - Build Windows MSI/NSIS installers and macOS universal DMG/app bundles through `tauri-apps/tauri-action`.
 - Sign updater artifacts with `TAURI_SIGNING_PRIVATE_KEY`.
@@ -103,6 +104,6 @@ The app checks for updates shortly after startup and can also check from the app
 | ---- | --- |
 | Workflow does not start | Make sure the pushed tag starts with `v` |
 | Signing fails | Verify `TAURI_SIGNING_PRIVATE_KEY` contains the full private key file contents |
-| Updates are not detected | Confirm the latest GitHub Release is published and contains `latest.json` |
+| Updates are not detected | Confirm the latest GitHub Release is published, contains `latest.json`, and that `latest.json.version` is greater than the installed app version |
 | Signature verification fails | Make sure the private key secret matches the public key in `tauri.conf.json` |
 | Local check fails on `--check` | Use `vpr tauri:check`; it maps to `tauri build --no-bundle` for this CLI version |
