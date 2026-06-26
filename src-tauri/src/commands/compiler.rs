@@ -13,6 +13,7 @@ use crate::types::{
     BuildArtifact, BuildJobId, BuildRequest, EnvironmentReport, SdkAutoConfigReport, SdkResolution,
     SdkRootConfig, SdkSetupReport, SdkSourceConfig, SdkSourceOverride, SdkVersionOption,
 };
+use crate::utils::process::hidden_command;
 
 #[tauri::command]
 #[specta::specta]
@@ -116,7 +117,7 @@ pub async fn open_artifact_folder(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
+        hidden_command("explorer")
             .arg(folder)
             .spawn()
             .map_err(|error| format!("Failed to open {}: {error}", folder.display()))?;
@@ -124,7 +125,7 @@ pub async fn open_artifact_folder(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
+        hidden_command("open")
             .arg(folder)
             .spawn()
             .map_err(|error| format!("Failed to open {}: {error}", folder.display()))?;
@@ -132,7 +133,7 @@ pub async fn open_artifact_folder(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open")
+        hidden_command("xdg-open")
             .arg(folder)
             .spawn()
             .map_err(|error| format!("Failed to open {}: {error}", folder.display()))?;

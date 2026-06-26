@@ -1,7 +1,7 @@
 //! CMake build orchestration for Cinema 4D plugins.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(target_os = "macos")]
@@ -18,6 +18,7 @@ use crate::compiler::{
     select_build_preset,
 };
 use crate::types::{BuildArtifact, BuildLogEvent, BuildProgressEvent, BuildRequest};
+use crate::utils::process::hidden_command;
 
 pub type LogCallback<'a> = &'a dyn Fn(BuildLogEvent);
 pub type ProgressCallback<'a> = &'a dyn Fn(BuildProgressEvent);
@@ -202,7 +203,7 @@ fn prepare_module_alias(request: &BuildRequest, alias_name: &str) -> Result<Modu
         remove_junction(&link)?;
     }
 
-    let status = Command::new("cmd")
+    let status = hidden_command("cmd")
         .args(["/c", "mklink", "/J"])
         .arg(&link)
         .arg(&target)
@@ -306,7 +307,7 @@ fn remove_module_alias_entry(path: &Path) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn remove_junction(path: &Path) -> Result<(), String> {
-    let status = Command::new("cmd")
+    let status = hidden_command("cmd")
         .args(["/c", "rmdir"])
         .arg(path)
         .status()
@@ -818,7 +819,7 @@ fn resolve_legacy_xcode_scheme(
         job_id,
         &format!("Running: xcodebuild {}", args.join(" ")),
     );
-    let output = Command::new("xcodebuild")
+    let output = hidden_command("xcodebuild")
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1039,6 +1040,7 @@ fn legacy_framework_roots_for_names(sdk_root: &Path, names: &[&str]) -> Vec<Path
         .collect()
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn missing_legacy_generated_framework_roots(error: &str) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for quoted in single_quoted_segments(error) {
@@ -1056,6 +1058,7 @@ fn missing_legacy_generated_framework_roots(error: &str) -> Vec<PathBuf> {
     roots
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn single_quoted_segments(text: &str) -> Vec<&str> {
     let mut segments = Vec::new();
     let mut rest = text;
@@ -1070,6 +1073,7 @@ fn single_quoted_segments(text: &str) -> Vec<&str> {
     segments
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn legacy_framework_root_for_generated_file(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .find(|ancestor| {
@@ -1134,7 +1138,7 @@ fn find_msbuild_path() -> Result<PathBuf, String> {
     let vswhere =
         PathBuf::from(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
     if vswhere.is_file() {
-        let output = Command::new(&vswhere)
+        let output = hidden_command(&vswhere)
             .args([
                 "-latest",
                 "-products",
@@ -1253,7 +1257,7 @@ fn run_command_with_path_prefix(
         &format!("Running: {program} {}", args.join(" ")),
     );
     let path = std::env::var("PATH").unwrap_or_default();
-    let output = Command::new(program)
+    let output = hidden_command(program)
         .args(args)
         .current_dir(cwd)
         .env("PATH", format!("{}:{path}", path_prefix.display()))
@@ -1422,7 +1426,7 @@ fn run_command(
         job_id,
         &format!("Running: {program} {}", args.join(" ")),
     );
-    let output = Command::new(program)
+    let output = hidden_command(program)
         .args(args)
         .current_dir(cwd)
         .stdout(Stdio::piped())

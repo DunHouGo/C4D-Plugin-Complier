@@ -24,10 +24,10 @@ fn detect_installed_c4d_versions_platform() -> Vec<InstalledC4dVersion> {
 
 #[cfg(target_os = "windows")]
 fn detect_installed_c4d_versions_registry() -> Vec<InstalledC4dVersion> {
-    use std::process::Command;
+    use crate::utils::process::hidden_command;
 
     let uninstall_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
-    let output = Command::new("reg")
+    let output = hidden_command("reg")
         .args([
             "query",
             &format!(r"HKLM\{uninstall_path}"),
@@ -56,9 +56,9 @@ fn detect_installed_c4d_versions_registry() -> Vec<InstalledC4dVersion> {
 
 #[cfg(target_os = "windows")]
 fn registry_install_location(key: &str) -> Option<String> {
-    use std::process::Command;
+    use crate::utils::process::hidden_command;
 
-    let output = Command::new("reg")
+    let output = hidden_command("reg")
         .args(["query", key, "/v", "InstallLocation"])
         .output()
         .ok()?;
@@ -96,15 +96,15 @@ fn detect_installed_c4d_versions_windows_fallback() -> Vec<InstalledC4dVersion> 
 
 #[cfg(target_os = "macos")]
 fn detect_installed_c4d_versions_platform() -> Vec<InstalledC4dVersion> {
+    use crate::utils::process::hidden_command;
     use std::collections::HashSet;
-    use std::process::Command;
 
     let bundle_ids = ["net.maxon.cinema4d", "net.maxon.cinema4d.installer"];
     let mut versions = Vec::new();
     let mut seen_install_roots = HashSet::new();
 
     for bundle_id in bundle_ids {
-        let Ok(output) = Command::new("mdfind")
+        let Ok(output) = hidden_command("mdfind")
             .arg(format!("kMDItemCFBundleIdentifier == '{bundle_id}'"))
             .output()
         else {

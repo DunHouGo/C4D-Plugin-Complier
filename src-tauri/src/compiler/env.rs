@@ -1,7 +1,6 @@
 //! Cinema 4D 插件构建环境检测。
 
 use std::path::PathBuf;
-use std::process::Command;
 
 use crate::compiler::sdk;
 use crate::compiler::{current_build_platform, local_data_root};
@@ -9,6 +8,7 @@ use crate::types::{
     CompilerPlatform, EnvironmentReport, InstalledC4dVersion, InstalledSdkZip, SdkVersionOption,
     SetupRequirement, SetupRequirementStatus, ToolStatus,
 };
+use crate::utils::process::hidden_command;
 
 pub fn detect_environment() -> EnvironmentReport {
     let build_platform = current_build_platform();
@@ -356,7 +356,17 @@ pub fn detect_cmake_path() -> Option<String> {
 
 #[cfg(not(target_os = "windows"))]
 pub fn detect_cmake_path() -> Option<String> {
-    find_program("cmake").or_else(find_cmake_in_common_locations)
+    find_program("cmake").or_else(|| {
+        #[cfg(target_os = "macos")]
+        {
+            find_cmake_in_common_locations()
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            None
+        }
+    })
 }
 
 fn detect_cmake() -> ToolStatus {
@@ -588,13 +598,8 @@ fn find_cmake_in_common_locations() -> Option<String> {
     .map(|path| path.display().to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
-fn find_cmake_in_common_locations() -> Option<String> {
-    None
-}
-
 pub fn run_capture(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
+    let output = hidden_command(program)
         .args(args)
         .output()
         .map_err(|error| format!("Failed to run {program}: {error}"))?;
