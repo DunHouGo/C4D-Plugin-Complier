@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 修复 Windows 发布版窗口同时显示系统标题栏和应用自定义标题栏的问题：Windows Tauri 窗口改为无原生装饰，保持只使用应用内标题栏和窗口控制按钮。
 - 优化自动更新检查：启动后会对临时网络失败进行重试，检查更新菜单也会直接进入下载、安装和重启流程，避免只提示有更新但无法完成安装。
 - 修复 GitHub Release 使用 `v*` tag 发布时 updater manifest 仍沿用仓库旧版本号的问题：发布 workflow 现在会在构建前从 tag 自动同步应用版本，避免 `latest.json.version` 小于用户本地版本导致自动更新不触发。
 - 修复 Windows 发布版启动和环境检测时反复弹出命令行窗口的问题：恢复 Tauri 主程序的 release GUI 子系统属性，并统一隐藏后台 `where`、`reg`、`vswhere`、CMake/MSBuild 等子进程窗口。
