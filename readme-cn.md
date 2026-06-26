@@ -67,6 +67,7 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 
 - 当前版本支持 Windows 和 macOS 构建流程。
 - Windows 构建仍需要本机安装 CMake、Visual Studio 2022 和对应 SDK；macOS 构建需要 CMake、Xcode 16、Clang 和 Python 3.8。
+- Windows legacy SDK 构建会直接调用 Maxon `projecttool` 和目标 `.vcxproj`，不需要手动以管理员身份运行 `generate_solution_win.bat`。
 - 路径输入既可以手动输入，也可以点击文件夹按钮选择，或将文件/目录拖拽到输入框区域。
 - 如果拖入或选择的 Plugin Root 是 `.../MyPlugin`，Package 会自动填成 `MyPlugin`。
 - 构建日志和后端错误保留原始英文诊断信息，便于复制到 SDK 文档、CMake 或编译器错误搜索中排查。

@@ -122,7 +122,7 @@ pub fn execute_build(
                 built_binaries.push((version.clone(), configuration.to_string(), binary));
             }
         } else if is_legacy_sdk_root(&sdk_root) {
-            prepare_legacy_module_workspace(&sdk_root, request, log, job_id)?;
+            let legacy_module = prepare_legacy_module_workspace(&sdk_root, request, log, job_id)?;
             generate_legacy_projects(&sdk_root, log, job_id)?;
             prepare_legacy_framework_generated_files(&sdk_root, log, job_id)?;
 
@@ -137,7 +137,7 @@ pub fn execute_build(
                 let legacy_binary_name = build_legacy_target_with_retry(
                     &sdk_root,
                     configuration,
-                    &request.module_name,
+                    &legacy_module.build_name,
                     log,
                     job_id,
                 )?;
@@ -478,13 +478,14 @@ fn prepare_legacy_module_workspace(
     request: &BuildRequest,
     log: LogCallback<'_>,
     job_id: &str,
-) -> Result<(), String> {
+) -> Result<LegacyModule, String> {
     let module_root = sdk_root.join("plugins").join(&request.module_name);
     if module_root.exists() {
         remove_link_or_dir_cross_platform(&module_root)?;
     }
     copy_dir_recursive(Path::new(&request.plugin_root), &module_root)?;
-    ensure_legacy_solution_includes_module(sdk_root, &request.module_name)?;
+    let legacy_module = resolve_legacy_module(&module_root, &request.module_name, log, job_id)?;
+    ensure_legacy_solution_includes_module(sdk_root, &legacy_module.solution_entry)?;
     log_sdk(
         log,
         job_id,
@@ -493,21 +494,79 @@ fn prepare_legacy_module_workspace(
             module_root.display()
         ),
     );
-    Ok(())
+    Ok(legacy_module)
+}
+
+struct LegacyModule {
+    build_name: String,
+    solution_entry: String,
+}
+
+fn resolve_legacy_module(
+    module_root: &Path,
+    requested_module_name: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<LegacyModule, String> {
+    if module_root
+        .join("project")
+        .join("projectdefinition.txt")
+        .is_file()
+    {
+        return Ok(LegacyModule {
+            build_name: requested_module_name.to_string(),
+            solution_entry: format!("plugins/{requested_module_name}"),
+        });
+    }
+
+    let nested = module_root
+        .read_dir()
+        .map_err(|error| format!("Failed to read {}: {error}", module_root.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.join("project").join("projectdefinition.txt").is_file())
+        .collect::<Vec<_>>();
+
+    if nested.len() == 1 {
+        let nested_root = nested[0].clone();
+        let build_name = nested_root
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("Invalid legacy module path: {}", nested_root.display()))?
+            .to_string();
+        log_warn(
+            log,
+            job_id,
+            "toolchain",
+            &format!(
+                "Using nested legacy module '{build_name}' from {}",
+                nested_root.display()
+            ),
+        );
+        return Ok(LegacyModule {
+            solution_entry: format!("plugins/{requested_module_name}/{build_name}"),
+            build_name,
+        });
+    }
+
+    Err(format!(
+        "Legacy module projectdefinition.txt was not found directly under {} and nested module detection found {} candidates",
+        module_root.display(),
+        nested.len()
+    ))
 }
 
 fn ensure_legacy_solution_includes_module(
     sdk_root: &Path,
-    module_name: &str,
+    module_entry: &str,
 ) -> Result<(), String> {
     let definition = sdk_root
         .join("plugins")
         .join("project")
         .join("projectdefinition.txt");
-    let module_entry = format!("plugins/{module_name}");
     let text = std::fs::read_to_string(&definition)
         .map_err(|error| format!("Failed to read {}: {error}", definition.display()))?;
-    if text.contains(&module_entry) {
+    if text.contains(module_entry) {
         return Ok(());
     }
 
@@ -545,9 +604,21 @@ fn generate_legacy_projects(
 
     #[cfg(target_os = "windows")]
     {
-        let script = sdk_root.join("generate_solution_win.bat");
-        let args = Vec::<String>::new();
-        run_command(&script.display().to_string(), &args, sdk_root, log, job_id)
+        let project_tool = legacy_project_tool_path(sdk_root)?;
+        let args = vec![format!("g_updateproject={}", sdk_root.display())];
+        log_warn(
+            log,
+            job_id,
+            "sdk",
+            "Generating legacy Windows projects with projecttool directly to avoid administrator-only solution link creation",
+        );
+        run_command(
+            &project_tool.display().to_string(),
+            &args,
+            sdk_root,
+            log,
+            job_id,
+        )
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -639,8 +710,18 @@ fn build_legacy_target(
 
     #[cfg(target_os = "windows")]
     {
-        let _ = (sdk_root, configuration, module_name, log, job_id);
-        Err("Legacy Windows SDK build support is not implemented yet".to_string())
+        let project = resolve_legacy_visual_studio_project(sdk_root, module_name)?;
+        let msbuild = find_msbuild_path()?;
+        let args = vec![
+            project.display().to_string(),
+            format!("/p:Configuration={configuration}"),
+            "/p:Platform=x64".to_string(),
+            "/p:PlatformToolset=v143".to_string(),
+            "/m".to_string(),
+            "/nologo".to_string(),
+        ];
+        run_command(&msbuild.display().to_string(), &args, sdk_root, log, job_id)?;
+        Ok(module_name.to_string())
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -1008,6 +1089,91 @@ fn legacy_framework_generated_register_exists(framework_root: &Path) -> bool {
         .is_file()
 }
 
+#[cfg(target_os = "windows")]
+fn legacy_project_tool_path(sdk_root: &Path) -> Result<PathBuf, String> {
+    let project_tool = sdk_root
+        .join("tools")
+        .join("projecttool")
+        .join("kernel_app_64bit.exe");
+    if project_tool.is_file() {
+        Ok(project_tool)
+    } else {
+        Err(format!(
+            "Legacy SDK project tool was not found at {}",
+            project_tool.display()
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_legacy_visual_studio_project(
+    sdk_root: &Path,
+    module_name: &str,
+) -> Result<PathBuf, String> {
+    let expected_file_name = format!("{module_name}.vcxproj");
+    WalkDir::new(sdk_root.join("plugins"))
+        .max_depth(5)
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().to_path_buf())
+        .find(|path| {
+            path.file_name()
+                .and_then(|value| value.to_str())
+                .is_some_and(|file_name| file_name.eq_ignore_ascii_case(&expected_file_name))
+        })
+        .ok_or_else(|| {
+            format!(
+                "Legacy Visual Studio project {expected_file_name} was not generated under {}",
+                sdk_root.join("plugins").display()
+            )
+        })
+}
+
+#[cfg(target_os = "windows")]
+fn find_msbuild_path() -> Result<PathBuf, String> {
+    let vswhere =
+        PathBuf::from(r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe");
+    if vswhere.is_file() {
+        let output = Command::new(&vswhere)
+            .args([
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.Component.MSBuild",
+                "-find",
+                r"MSBuild\**\Bin\MSBuild.exe",
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .map_err(|error| format!("Failed to run {}: {error}", vswhere.display()))?;
+        if output.status.success() {
+            if let Some(path) = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(PathBuf::from)
+                .find(|path| path.is_file())
+            {
+                return Ok(path);
+            }
+        }
+    }
+
+    let common = PathBuf::from(
+        r"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe",
+    );
+    if common.is_file() {
+        return Ok(common);
+    }
+
+    Err(
+        "MSBuild.exe was not found. Install Visual Studio 2022 with MSBuild and C++ tools."
+            .to_string(),
+    )
+}
+
 #[cfg(target_os = "macos")]
 fn prepare_python_shim() -> Result<PathBuf, String> {
     let shim_dir = local_data_root()?.join("legacy-python-shim");
@@ -1055,7 +1221,7 @@ fn find_legacy_plugin_binary(
         return Ok(path.to_path_buf());
     }
 
-    WalkDir::new(sdk_root.join("plugins").join(module_name))
+    WalkDir::new(sdk_root.join("plugins"))
         .into_iter()
         .filter_map(Result::ok)
         .map(|entry| entry.path().to_path_buf())
@@ -1364,9 +1530,11 @@ fn command_log_category(program: &str) -> &'static str {
 
     if name.contains("cmake") {
         "cmake"
+    } else if name.contains("msbuild") {
+        "toolchain"
     } else if name.contains("xcodebuild") {
         "xcode"
-    } else if name.contains("generate_solution") {
+    } else if name.contains("generate_solution") || name.contains("kernel_app_64bit") {
         "sdk"
     } else {
         "toolchain"

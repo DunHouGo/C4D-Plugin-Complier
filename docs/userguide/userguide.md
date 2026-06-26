@@ -23,6 +23,8 @@ Smart Check reports detected Cinema 4D installs, SDK availability, and required 
 
 The SDK Matrix stays visible for known versions, but only SDK roots and archives are treated as buildable by default. This prevents a missing 2025 SDK from silently entering a 2024.4 and 2026 local build.
 
+On Windows legacy SDKs, the app generates projects by calling Maxon's `projecttool` directly and builds the target `.vcxproj`, avoiding the administrator-only `generate_solution_win.bat` shortcut step.
+
 ## Queue Mode
 
 Add to Queue copies the current build settings into a queue item. Edit loads a queue item back into the left form, Update Queue Item saves the changed settings, and the arrow buttons reorder queued builds before Run Queue executes them serially.

@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 修复 Windows 2025 legacy SDK 构建前运行 `generate_solution_win.bat` 触发管理员权限要求的问题：改为直接调用 Maxon `projecttool` 生成工程，并对嵌套插件模块生成正确的 solution 条目；legacy Visual Studio 构建会直接调用目标 `.vcxproj`，在 VS2022 环境中覆盖使用 `v143` 工具集。
 - 修复 Windows 读取旧 SDK 配置时显示 `/Users/.../Documents/Maxon_SDK` 的问题：删除仓库内固定路径的旧 SDK 配置文件，加入忽略规则，并在加载和保存 SDK 根目录时将无盘符的 macOS/Linux 文档目录路径纠正为本机 `Documents\Maxon_SDK`。
 - 优化构建队列完成反馈：成功队列项改为绿色高亮，队列项显示构建耗时，整组队列结束后会弹出完成提示并写入成功、失败或停止总结。
 - 修复 macOS 2024.4 legacy SDK 中 `generated/hxx/register.cpp` 可能在 Xcode 编译前尚未生成的问题：构建插件前会主动预检查并生成核心 framework 和实际插件模块的 `register.cpp`，避免 source processor 与编译阶段竞态导致失败。
