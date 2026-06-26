@@ -21,6 +21,7 @@ __pycache__/
 src-tauri/target
 *.local
 *.local.*
+src-tauri/configs/sdk_sources.json
 jscpd-report
 
 # Editor directories and files

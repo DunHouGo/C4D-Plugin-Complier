@@ -17,7 +17,7 @@ C4D Plugin Compiler builds and packages Cinema 4D C++ plugins with locally confi
 
 Use one SDK Root folder without spaces, such as `Documents\Maxon_SDK`. The app resolves SDKs in this order: configured SDK root, configured archive, cache root, official download URL, then installed Cinema 4D `sdk.zip` only as a compatibility fallback.
 
-SDK root preferences are saved in the user config directory. The legacy repository `configs/sdk_sources.json` file is read only as a compatibility fallback.
+SDK root preferences are saved in the user config directory. When no preference exists, the app uses the current system Documents folder. A legacy repository `configs/sdk_sources.json` file is read only when it exists from an older checkout.
 
 Smart Check reports detected Cinema 4D installs, SDK availability, and required build tools without changing files. One-click Setup creates the SDK root, downloads the required official Maxon SDK zip, extracts it into a temporary directory for validation, then writes the version cache.
 

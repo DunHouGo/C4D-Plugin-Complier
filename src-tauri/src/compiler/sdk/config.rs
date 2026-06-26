@@ -49,12 +49,13 @@ pub(super) fn parse_sdk_source_config(text: &str) -> Result<SdkSourceConfig, Str
     let value: Value = serde_json::from_str(text)
         .map_err(|error| format!("Failed to parse SDK config: {error}"))?;
     if value.get("sdk_root").is_some() {
-        return serde_json::from_value::<SdkSourceConfig>(value)
-            .map_err(|error| format!("Failed to parse SDK root config: {error}"));
+        let config = serde_json::from_value::<SdkSourceConfig>(value)
+            .map_err(|error| format!("Failed to parse SDK root config: {error}"))?;
+        return Ok(normalize_sdk_source_config(config));
     }
     if let Some(root) = legacy_sdk_root(&value) {
         return Ok(SdkSourceConfig {
-            sdk_root: Some(root),
+            sdk_root: Some(normalize_sdk_root(&root)),
         });
     }
     Ok(default_sdk_source_config())
@@ -102,9 +103,70 @@ pub(super) fn default_sdk_root() -> PathBuf {
         .join(SDK_ROOT_FOLDER)
 }
 
+fn normalize_sdk_source_config(config: SdkSourceConfig) -> SdkSourceConfig {
+    SdkSourceConfig {
+        sdk_root: config.sdk_root.map(|root| normalize_sdk_root(&root)),
+    }
+}
+
+pub(super) fn normalize_sdk_root(path: &str) -> String {
+    let trimmed = path.trim();
+    if cfg!(windows) && is_posix_documents_sdk_root(trimmed) {
+        return default_sdk_root().display().to_string();
+    }
+    trimmed.to_string()
+}
+
+fn is_posix_documents_sdk_root(path: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    if !normalized.starts_with('/') {
+        return false;
+    }
+
+    let parts = normalized
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+
+    matches!(
+        parts.as_slice(),
+        [prefix, _, documents, sdk_folder]
+            if (*prefix == "Users" || *prefix == "home")
+                && *documents == "Documents"
+                && *sdk_folder == SDK_ROOT_FOLDER
+    )
+}
+
 pub(super) fn validate_no_spaces(path: &str) -> Result<(), String> {
     if path.chars().any(char::is_whitespace) {
         return Err(format!("SDK root must not contain spaces: {path}"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{default_sdk_root, parse_sdk_source_config};
+
+    #[test]
+    fn windows_normalizes_legacy_posix_documents_sdk_root() {
+        let config = parse_sdk_source_config(
+            r#"{
+              "sdk_root": "/Users/dunhou/Documents/Maxon_SDK"
+            }"#,
+        )
+        .expect("parse SDK source config");
+
+        if cfg!(windows) {
+            assert_eq!(
+                config.sdk_root.as_deref(),
+                Some(default_sdk_root().display().to_string().as_str())
+            );
+        } else {
+            assert_eq!(
+                config.sdk_root.as_deref(),
+                Some("/Users/dunhou/Documents/Maxon_SDK")
+            );
+        }
+    }
 }

@@ -93,6 +93,7 @@ pub fn save_sdk_root_config(config: SdkRootConfig) -> Result<SdkSourceConfig, St
         .map(|item| item.trim().to_string())
         .filter(|item| !item.is_empty())
         .unwrap_or_else(|| default_sdk_root().display().to_string());
+    let sdk_root = config::normalize_sdk_root(&sdk_root);
     validate_no_spaces(&sdk_root)?;
 
     let config = SdkSourceConfig {
