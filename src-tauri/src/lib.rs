@@ -44,9 +44,12 @@ pub fn run() {
     // 窗口状态插件用于保存和恢复窗口位置与尺寸。
     #[cfg(desktop)]
     {
+        let mut window_state_flags = tauri_plugin_window_state::StateFlags::all();
+        window_state_flags.remove(tauri_plugin_window_state::StateFlags::DECORATIONS);
+
         app_builder = app_builder.plugin(
             tauri_plugin_window_state::Builder::new()
-                .with_state_flags(tauri_plugin_window_state::StateFlags::all())
+                .with_state_flags(window_state_flags)
                 .build(),
         );
     }
@@ -98,6 +101,11 @@ pub fn run() {
 
             // 注意：应用菜单由 JavaScript 创建，以复用前端国际化。
             // 菜单实现见 src/lib/menu.ts。
+
+            #[cfg(desktop)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_decorations(false)?;
+            }
 
             Ok(())
         })
