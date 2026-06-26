@@ -50,7 +50,7 @@ vpr tauri build --no-bundle
 
 ## 基本流程
 
-1. 在 SDK Sources 面板设置 **SDK Root**。
+1. 在 SDK Sources 面板设置 **SDK Root**( 默认是 `../Documents/Maxon_SDK` )。
 2. 点击 **Auto Detect** 或 **Refresh** 检测本机 Cinema 4D 安装和可用 SDK。
 3. 设置 **Plugin Root**、**Module**、**Package**、目标 C4D 版本、构建配置、打包模式和输出目录。
 4. 在 **Output Preview** 中确认输出目录结构。
@@ -65,7 +65,6 @@ vpr tauri build --no-bundle
 | `src/` | React 前端源码 |
 | `src-tauri/` | Rust 和 Tauri 后端源码 |
 | `locales/` | 应用本地化文件 |
-| `configs/` | 本地配置模板和 SDK 来源配置 |
 | `docs/developer/` | 架构和开发文档 |
 
 ## 开发命令
@@ -84,12 +83,6 @@ vpr tauri build --no-bundle
 ## GitHub 发布和自动更新
 
 推送 `v*` tag 时，GitHub Actions 会构建 Windows 和 macOS 发布产物，并自动创建正式 GitHub Release。Release 会包含 Windows MSI/NSIS 安装包、macOS DMG/app 包、updater 签名文件和 `latest.json`。
-
-首次发布前，在 GitHub Actions Secrets 中添加：
-
-- `TAURI_SIGNING_PRIVATE_KEY`：`C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key` 的文件内容
-
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`：当前 updater 密钥的密码
 
 发布版本：
 

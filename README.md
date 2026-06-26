@@ -2,7 +2,7 @@
 
 [简体中文](README.zh-CN.md) | English
 
-C4D Plugin Compiler is a desktop build and packaging tool for Cinema 4D C++ plugins. It helps prepare Maxon C++ SDK sources, detect the local Windows build environment, run the official CMake preset workflow, and package compiled plugins into C4D-ready folders.
+C4D Plugin Compiler is a desktop, build and packaging tool for Cinema 4D C++ plugins. It helps prepare Maxon C++ SDK sources, detect the local Windows build environment, run the official CMake preset workflow, and package compiled plugins into C4D-ready folders.
 
 ![C4D Plugin Compiler interface](images/img.jpg)
 
@@ -10,7 +10,7 @@ The app is built with Tauri 2, Rust, React, and TypeScript. It is based on the [
 
 ## Features
 
-- Manage one shared SDK root for Cinema 4D 2024.4, 2025, and 2026 SDKs.
+- Manage one shared SDK root for Cinema 4D 2024.4, 2025, and 2026+ SDKs.
 - Detect local Cinema 4D installations and map them to matching Maxon C++ SDK versions.
 - Download or reuse cached SDK archives when a required SDK is missing.
 - Check CMake, Visual Studio 2022, Windows SDK, and SDK availability before building.
@@ -50,7 +50,7 @@ vpr tauri build --no-bundle
 
 ## Basic Workflow
 
-1. Set **SDK Root** in the SDK Sources panel.
+1. Set **SDK Root** in the SDK Sources panel( Default is `../Documents/Maxon_SDK`).
 2. Click **Auto Detect** or **Refresh** to detect local Cinema 4D installs and available SDKs.
 3. Set **Plugin Root**, **Module**, **Package**, target C4D versions, configuration, package mode, and output folder.
 4. Use **Output Preview** to confirm the folder layout.
@@ -65,7 +65,6 @@ See [readme-en.md](readme-en.md) for the detailed user guide.
 | `src/` | React frontend source |
 | `src-tauri/` | Rust and Tauri backend source |
 | `locales/` | App localization files |
-| `configs/` | Local configuration templates and SDK source config |
 | `docs/developer/` | Architecture and development documentation |
 
 ## Development Commands
@@ -84,12 +83,6 @@ vpr tauri build --no-bundle
 ## GitHub Releases And Updates
 
 GitHub Actions builds Windows and macOS release artifacts when a `v*` tag is pushed. The workflow publishes a GitHub Release with Windows MSI/NSIS installers, macOS DMG/app bundles, updater signatures, and `latest.json`.
-
-Before the first release, add this GitHub Actions secret:
-
-- `TAURI_SIGNING_PRIVATE_KEY`: contents of `C:\Users\DunHou\.tauri\c4d-plugin-compiler-updater.key`
-
-- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: password for the current updater key
 
 To publish a release:
 
