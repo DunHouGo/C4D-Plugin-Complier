@@ -27,6 +27,10 @@ vi.mock('@tauri-apps/plugin-updater', () => ({
   check: vi.fn().mockResolvedValue(null),
 }))
 
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openUrl: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   save: vi.fn().mockResolvedValue('/tmp/c4d-build.log'),
 }))

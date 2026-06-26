@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Settings, Palette, XIcon } from 'lucide-react'
+import { Info, Palette, Settings, XIcon } from 'lucide-react'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,9 +20,10 @@ import { useUIStore } from '@/store/ui-store'
 import { cn } from '@/lib/utils'
 import { GeneralPane } from './panes/GeneralPane'
 import { AppearancePane } from './panes/AppearancePane'
+import { AboutPane } from './panes/AboutPane'
 import { Button } from '../ui/button'
 
-type PreferencePane = 'general' | 'appearance'
+type PreferencePane = 'general' | 'appearance' | 'about'
 
 const navigationItems = [
   {
@@ -34,6 +35,11 @@ const navigationItems = [
     id: 'appearance' as const,
     labelKey: 'preferences.appearance',
     icon: Palette,
+  },
+  {
+    id: 'about' as const,
+    labelKey: 'preferences.about',
+    icon: Info,
   },
 ] as const
 
@@ -112,6 +118,7 @@ export function PreferencesDialog() {
               <div className="min-w-0 pb-6 pl-3 pr-4 pt-3 sm:p-4 sm:pb-6">
                 {activePane === 'general' && <GeneralPane />}
                 {activePane === 'appearance' && <AppearancePane />}
+                {activePane === 'about' && <AboutPane />}
               </div>
             </ScrollArea>
           </main>

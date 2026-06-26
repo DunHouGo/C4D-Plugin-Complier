@@ -6,7 +6,7 @@ C4D Plugin Compiler 是一个基于 Rust 和 Tauri 2 的 Cinema 4D C++ 插件编
 
 - 左侧工作区用于填写插件构建参数，底部显示构建队列。
 - 中间工作台用于查看环境状态、解析 SDK、执行构建，并通过“构建日志 / 产物”标签页切换查看输出。
-- 在偏好设置中选择简体中文后，主工作台、SDK Sources、Output Preview、按钮、状态和主要提示会立即切换为中文。
+- 偏好设置包含 SDK 配置、外观和关于页面。在外观中选择简体中文后，主工作台、SDK Sources、Output Preview、按钮、状态和主要提示会立即切换为中文。
 
 ## SDK Sources 参数
 
@@ -62,6 +62,13 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 ## 产物
 
 产物标签页会显示当前构建生成的包目录和 zip 文件。点击 Open 可以在系统文件管理器中打开对应产物位置。
+
+## 关于与更新
+
+- 关于页面会显示当前应用版本号，用于判断自动更新是否需要安装新版。
+- Check for Updates 会手动检查 GitHub Release updater 清单；发现新版后可以直接下载、安装并重启应用。
+- Open Downloads 会打开 GitHub Release 下载页面，用户可以手动下载安装包。
+- Open GitHub 会打开项目 GitHub 页面，便于查看源码、发布记录和问题反馈。
 
 ## 注意事项
 
