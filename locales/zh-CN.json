@@ -20,6 +20,8 @@
   "preferences.about.updatesDescription": "手动检查更新，或打开 GitHub Release 页面下载安装包。",
   "preferences.about.checkUpdates": "检查更新",
   "preferences.about.checkingUpdates": "检查中...",
+  "preferences.about.latestVersion": "当前已是最新版本：{{version}}",
+  "preferences.about.latestVersionShort": "已是最新版本",
   "preferences.about.openReleases": "打开下载页面",
   "preferences.about.github": "GitHub",
   "preferences.about.githubDescription": "查看项目页面、发布记录和源码。",

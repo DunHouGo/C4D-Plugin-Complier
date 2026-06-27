@@ -23,6 +23,10 @@ vi.mock('@tauri-apps/api/event', () => ({
   }),
 }))
 
+vi.mock('@tauri-apps/api/app', () => ({
+  getVersion: vi.fn().mockResolvedValue('0.2.6'),
+}))
+
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: vi.fn().mockResolvedValue(null),
 }))

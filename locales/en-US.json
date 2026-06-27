@@ -20,6 +20,8 @@
   "preferences.about.updatesDescription": "Check for updates manually, or open the GitHub release page to download an installer.",
   "preferences.about.checkUpdates": "Check for Updates",
   "preferences.about.checkingUpdates": "Checking...",
+  "preferences.about.latestVersion": "You are already on the latest version: {{version}}",
+  "preferences.about.latestVersionShort": "Already up to date",
   "preferences.about.openReleases": "Open Downloads",
   "preferences.about.github": "GitHub",
   "preferences.about.githubDescription": "View the project page, release history, and source code.",

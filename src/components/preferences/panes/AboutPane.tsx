@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ExternalLink, Github, RefreshCw } from 'lucide-react'
+import { getVersion } from '@tauri-apps/api/app'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -13,16 +14,44 @@ const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases/latest`
 
 export function AboutPane() {
   const { t } = useTranslation()
+  const [appVersion, setAppVersion] = useState<string>('...')
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [openingUrl, setOpeningUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    const loadVersion = async () => {
+      try {
+        const version = await getVersion()
+        if (mounted) {
+          setAppVersion(version)
+        }
+      } catch (error) {
+        logger.error('Failed to read app version', { error })
+        if (mounted) {
+          setAppVersion(__APP_VERSION__)
+        }
+      }
+    }
+
+    void loadVersion()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const handleCheckForUpdates = async () => {
     setCheckingUpdate(true)
     try {
       await checkAndInstallUpdate({
         source: 'preferences-about',
-        silentNoUpdate: false,
+        silentNoUpdate: true,
         notifyOnError: true,
+        onNoUpdate: version => {
+          toast.success(t('preferences.about.latestVersion', { version }))
+        },
       })
     } finally {
       setCheckingUpdate(false)
@@ -58,7 +87,7 @@ export function AboutPane() {
           description={t('preferences.about.versionDescription')}
         >
           <div className="inline-flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-sm text-foreground">
-            {__APP_VERSION__}
+            {appVersion}
           </div>
         </SettingsField>
 

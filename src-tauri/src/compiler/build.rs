@@ -126,6 +126,11 @@ pub fn execute_build(
             let legacy_module = prepare_legacy_module_workspace(&sdk_root, request, log, job_id)?;
             generate_legacy_projects(&sdk_root, log, job_id)?;
             prepare_legacy_framework_generated_files(&sdk_root, log, job_id)?;
+            sanitize_legacy_generated_projects(
+                &sdk_root.join("plugins").join(&request.module_name),
+                log,
+                job_id,
+            )?;
 
             for configuration in request.configuration.cmake_configs() {
                 current += 1;
@@ -1410,6 +1415,7 @@ fn is_ignored_plugin_copy_name(name: &str) -> bool {
             | "__pycache__"
             | "build"
             | "dist"
+            | "dist-test-debug"
             | "node_modules"
             | "target"
     )
@@ -1424,6 +1430,208 @@ fn remove_link_or_dir_cross_platform(path: &Path) -> Result<(), String> {
     } else {
         std::fs::remove_dir_all(path)
             .map_err(|error| format!("Failed to remove {}: {error}", path.display()))
+    }
+}
+
+fn sanitize_legacy_generated_projects(
+    module_root: &Path,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    if !module_root.is_dir() {
+        return Ok(());
+    }
+
+    let mut touched = Vec::new();
+    for entry in WalkDir::new(module_root)
+        .max_depth(6)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path();
+        if !is_legacy_generated_project_text_file(path) {
+            continue;
+        }
+
+        let Some(updated) = sanitize_legacy_project_file(path)? else {
+            continue;
+        };
+
+        std::fs::write(path, updated)
+            .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
+        touched.push(path.display().to_string());
+    }
+
+    if !touched.is_empty() {
+        log_sdk(
+            log,
+            job_id,
+            &format!(
+                "Normalized legacy generated project files to prefer res/: {}",
+                touched.join(", ")
+            ),
+        );
+    }
+
+    Ok(())
+}
+
+fn is_legacy_generated_project_text_file(path: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
+        return false;
+    };
+
+    file_name.ends_with(".vcxproj")
+        || file_name.ends_with(".vcxproj.filters")
+        || file_name == "SConscript"
+        || file_name.ends_with(".cbp")
+        || file_name == "project.pbxproj"
+}
+
+fn sanitize_legacy_project_file(path: &Path) -> Result<Option<String>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
+
+    let updated = if path.file_name().and_then(|value| value.to_str()).is_some_and(|file_name| {
+        file_name.ends_with(".vcxproj")
+    }) {
+        sanitize_vcxproj_text(&text)
+    } else if path.file_name().and_then(|value| value.to_str()).is_some_and(|file_name| {
+        file_name.ends_with(".vcxproj.filters")
+    }) {
+        sanitize_dist_test_debug_lines(&text)
+    } else if path.file_name().and_then(|value| value.to_str()) == Some("SConscript") {
+        sanitize_sconscript_text(&text)
+    } else if path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|file_name| file_name.ends_with(".cbp"))
+    {
+        sanitize_dist_test_debug_lines(&text)
+    } else if path.file_name().and_then(|value| value.to_str()) == Some("project.pbxproj") {
+        sanitize_pbxproj_text(&text)
+    } else {
+        None
+    };
+
+    Ok(updated.filter(|value| value != &text))
+}
+
+fn sanitize_vcxproj_text(text: &str) -> Option<String> {
+    let mut updated = text.to_string();
+    let old_debug_includes = [
+        "      <AdditionalIncludeDirectories>../dist-test-debug;../dist-test-debug/Boghma WaterMark;../dist-test-debug/Boghma WaterMark/res;../dist-test-debug/Boghma WaterMark/res/description;../generated/hxx;../res;../res/description;../source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>",
+    ];
+    let new_include_dirs =
+        "      <AdditionalIncludeDirectories>../generated/hxx;../res;../res/description;../source;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>";
+
+    for old in old_debug_includes {
+        updated = updated.replace(old, new_include_dirs);
+    }
+
+    updated = updated
+        .replace(
+            "    <ClInclude Include=\"..\\dist-test-debug\\Boghma WaterMark\\res\\c4d_symbols.h\" />\r\n",
+            "",
+        )
+        .replace(
+            "    <ClInclude Include=\"..\\dist-test-debug\\Boghma WaterMark\\res\\description\\vpboghmawatermark.h\" />\r\n",
+            "",
+        );
+
+    if updated != text {
+        Some(updated)
+    } else {
+        None
+    }
+}
+
+fn sanitize_sconscript_text(text: &str) -> Option<String> {
+    let mut updated = text.to_string();
+    let old_block = "includedirs = [\n    globalenv['MAXON_PROJECT_DIR']+'/dist-test-debug',\n    globalenv['MAXON_PROJECT_DIR']+'/dist-test-debug/Boghma WaterMark',\n    globalenv['MAXON_PROJECT_DIR']+'/dist-test-debug/Boghma WaterMark/res',\n    globalenv['MAXON_PROJECT_DIR']+'/dist-test-debug/Boghma WaterMark/res/description',\n    globalenv['MAXON_PROJECT_DIR']+'/res',\n    globalenv['MAXON_PROJECT_DIR']+'/res/description',\n    globalenv['MAXON_PROJECT_DIR']+'/source',\n    globalenv['MAXON_PROJECT_DIR']+'/generated/hxx',";
+    let new_block = "includedirs = [\n    globalenv['MAXON_PROJECT_DIR']+'/generated/hxx',\n    globalenv['MAXON_PROJECT_DIR']+'/res',\n    globalenv['MAXON_PROJECT_DIR']+'/res/description',\n    globalenv['MAXON_PROJECT_DIR']+'/source',";
+    updated = updated.replace(old_block, new_block);
+
+    if updated != text {
+        Some(updated)
+    } else {
+        None
+    }
+}
+
+fn sanitize_pbxproj_text(text: &str) -> Option<String> {
+    let mut updated = text.to_string();
+    let old_search_paths = "USER_HEADER_SEARCH_PATHS = \"../dist-test-debug \\\"../dist-test-debug/Boghma WaterMark\\\" \\\"../dist-test-debug/Boghma WaterMark/res\\\" \\\"../dist-test-debug/Boghma WaterMark/res/description\\\" ../generated/hxx ../res ../res/description ../source $(MAXON_ROOTDIR)frameworks/core.framework/source/** $(MAXON_ROOTDIR)frameworks/core.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/cinema.framework/source/** $(MAXON_ROOTDIR)frameworks/cinema.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/image.framework/source/** $(MAXON_ROOTDIR)frameworks/image.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/math.framework/source/** $(MAXON_ROOTDIR)frameworks/math.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/mesh_misc.framework/source/** $(MAXON_ROOTDIR)frameworks/mesh_misc.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/misc.framework/source/** $(MAXON_ROOTDIR)frameworks/misc.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/modeling_geom.framework/source/** $(MAXON_ROOTDIR)frameworks/modeling_geom.framework/generated/hxx $(inherited)\";";
+    let new_search_paths = "USER_HEADER_SEARCH_PATHS = ../generated/hxx ../res ../res/description ../source $(MAXON_ROOTDIR)frameworks/core.framework/source/** $(MAXON_ROOTDIR)frameworks/core.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/cinema.framework/source/** $(MAXON_ROOTDIR)frameworks/cinema.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/image.framework/source/** $(MAXON_ROOTDIR)frameworks/image.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/math.framework/source/** $(MAXON_ROOTDIR)frameworks/math.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/mesh_misc.framework/source/** $(MAXON_ROOTDIR)frameworks/mesh_misc.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/misc.framework/source/** $(MAXON_ROOTDIR)frameworks/misc.framework/generated/hxx $(MAXON_ROOTDIR)frameworks/modeling_geom.framework/source/** $(MAXON_ROOTDIR)frameworks/modeling_geom.framework/generated/hxx $(inherited);";
+    updated = updated.replace(old_search_paths, new_search_paths);
+
+    updated = updated
+        .replace("				A0AAEC3459B07733DF000000 /* dist-test-debug */,\n", "")
+        .replace(
+            "				A0AAEC34597E3D9907000000 /* vpboghmawatermark.h */,\n",
+            "",
+        )
+        .replace(
+            "				A0AAEC3459C5FED721000000 /* c4d_symbols.h */,\n",
+            "",
+        )
+        .replace(
+            "		A0AAEC34597E3D9907000000 /* vpboghmawatermark.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = vpboghmawatermark.h; path = \"../dist-test-debug/Boghma WaterMark/res/description/vpboghmawatermark.h\"; sourceTree = SOURCE_ROOT; };\n",
+            "",
+        )
+        .replace(
+            "		A0AAEC3459C5FED721000000 /* c4d_symbols.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = c4d_symbols.h; path = \"../dist-test-debug/Boghma WaterMark/res/c4d_symbols.h\"; sourceTree = SOURCE_ROOT; };\n",
+            "",
+        )
+        .replace(
+            "		A0AAEC3459A07816F4000000 /* description */ = {\n			isa = PBXGroup;\n			children = (\n				A0AAEC34597E3D9907000000 /* vpboghmawatermark.h */,\n			);\n			name = description;\n			path = \"../dist-test-debug/Boghma WaterMark/res/description\";\n			sourceTree = SOURCE_ROOT;\n		};\n",
+            "",
+        )
+        .replace(
+            "		A0AAEC3459B07733DF000000 /* dist-test-debug */ = {\n			isa = PBXGroup;\n			children = (\n				A0AAEC3459C9EA5DF6000000 /* Boghma WaterMark */,\n			);\n			name = \"dist-test-debug\";\n			path = \"../dist-test-debug\";\n			sourceTree = SOURCE_ROOT;\n		};\n",
+            "",
+        )
+        .replace(
+            "		A0AAEC3459C9EA5DF6000000 /* Boghma WaterMark */ = {\n			isa = PBXGroup;\n			children = (\n				A0AAEC3459F1158907000000 /* res */,\n			);\n			name = \"Boghma WaterMark\";\n			path = \"../dist-test-debug/Boghma WaterMark\";\n			sourceTree = SOURCE_ROOT;\n		};\n",
+            "",
+        )
+        .replace(
+            "		A0AAEC3459F1158907000000 /* res */ = {\n			isa = PBXGroup;\n			children = (\n				A0AAEC3459A07816F4000000 /* description */,\n				A0AAEC3459C5FED721000000 /* c4d_symbols.h */,\n			);\n			name = res;\n			path = \"../dist-test-debug/Boghma WaterMark/res\";\n			sourceTree = SOURCE_ROOT;\n		};\n",
+            "",
+        );
+
+    if updated != text {
+        Some(updated)
+    } else {
+        None
+    }
+}
+
+fn sanitize_dist_test_debug_lines(text: &str) -> Option<String> {
+    let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let lines = text
+        .lines()
+        .filter(|line| !line.contains("dist-test-debug"))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    let mut updated = lines.join(newline);
+    if text.ends_with('\n') {
+        updated.push_str(newline);
+    }
+
+    if updated != text {
+        Some(updated)
+    } else {
+        None
     }
 }
 
@@ -1703,12 +1911,31 @@ mod tests {
         std::fs::write(source.path().join(".git").join("config"), "git").unwrap();
         std::fs::create_dir_all(source.path().join("dist")).unwrap();
         std::fs::write(source.path().join("dist").join("old.zip"), "zip").unwrap();
+        std::fs::create_dir_all(
+            source
+                .path()
+                .join("dist-test-debug")
+                .join("Boghma WaterMark")
+                .join("res"),
+        )
+        .unwrap();
+        std::fs::write(
+            source
+                .path()
+                .join("dist-test-debug")
+                .join("Boghma WaterMark")
+                .join("res")
+                .join("c4d_symbols.h"),
+            "legacy",
+        )
+        .unwrap();
 
         copy_dir_recursive(source.path(), target.path()).unwrap();
 
         assert!(target.path().join("source").join("main.cpp").is_file());
         assert!(!target.path().join(".git").exists());
         assert!(!target.path().join("dist").exists());
+        assert!(!target.path().join("dist-test-debug").exists());
     }
 
     #[test]
@@ -1728,6 +1955,17 @@ mod tests {
         drop(listener);
         assert!(target.path().join("projectdefinition.txt").is_file());
         assert!(!target.path().join("fsmonitor--daemon.ipc").exists());
+    }
+
+    #[test]
+    fn legacy_generated_project_text_file_filter_rejects_binary_resources() {
+        assert!(is_legacy_generated_project_text_file(Path::new("boghma.vcxproj")));
+        assert!(is_legacy_generated_project_text_file(Path::new("boghma.vcxproj.filters")));
+        assert!(is_legacy_generated_project_text_file(Path::new("SConscript")));
+        assert!(is_legacy_generated_project_text_file(Path::new("boghma.cbp")));
+        assert!(is_legacy_generated_project_text_file(Path::new("project.pbxproj")));
+        assert!(!is_legacy_generated_project_text_file(Path::new("boghma.png")));
+        assert!(!is_legacy_generated_project_text_file(Path::new("c4d_symbols.h")));
     }
 
     #[test]

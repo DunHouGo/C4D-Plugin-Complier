@@ -1,5 +1,6 @@
 import { check, type DownloadEvent } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
+import { getVersion } from '@tauri-apps/api/app'
 import { logger } from '@/lib/logger'
 import { notifications } from '@/lib/notifications'
 
@@ -9,6 +10,7 @@ interface UpdateCheckOptions {
   source: string
   silentNoUpdate?: boolean
   notifyOnError?: boolean
+  onNoUpdate?: (version: string) => void
 }
 
 const STARTUP_RETRY_DELAYS_MS = [5_000, 30_000, 120_000]
@@ -20,6 +22,7 @@ export async function checkAndInstallUpdate({
   source,
   silentNoUpdate = false,
   notifyOnError = true,
+  onNoUpdate,
 }: UpdateCheckOptions): Promise<UpdateCheckStatus> {
   logger.info('Checking for updates', { source })
 
@@ -28,8 +31,13 @@ export async function checkAndInstallUpdate({
     if (!update) {
       logger.info('No update available', { source })
       if (!silentNoUpdate) {
-        notifications.success('Up to Date', 'You are running the latest version')
+        notifications.success(
+          'Up to Date',
+          'You are running the latest version'
+        )
       }
+      const version = await getVersion()
+      onNoUpdate?.(version)
       return 'none'
     }
 

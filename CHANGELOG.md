@@ -1,31 +1,13 @@
-# 更新日志
+﻿# C4D Plugin Compiler 更新日志
 
 ## 未发布
 
-- 在偏好设置中新增关于页面，显示当前应用版本，并提供手动检查更新、打开 GitHub 项目页和打开 GitHub Release 下载页的入口。
-- 修复 Windows 2026 CMake SDK 构建准备阶段复用旧插件 junction 时误判路径不存在的问题：现在使用不跟随目标的元数据检查别名路径，并在创建 junction 失败时输出真实命令返回信息，避免 `plugin-links` 残留导致构建中断。
-- 修复 Windows 发布版旧窗口状态覆盖无标题栏配置的问题：窗口状态插件不再保存或恢复原生装饰状态，并在启动时强制关闭系统标题栏，避免历史 `.window-state.json` 中的 `decorated: true` 导致双标题栏。
-- 修复 Windows 发布版窗口同时显示系统标题栏和应用自定义标题栏的问题：Windows Tauri 窗口改为无原生装饰，保持只使用应用内标题栏和窗口控制按钮。
-- 优化自动更新检查：启动后会对临时网络失败进行重试，检查更新菜单也会直接进入下载、安装和重启流程，避免只提示有更新但无法完成安装。
-- 修复 GitHub Release 使用 `v*` tag 发布时 updater manifest 仍沿用仓库旧版本号的问题：发布 workflow 现在会在构建前从 tag 自动同步应用版本，避免 `latest.json.version` 小于用户本地版本导致自动更新不触发。
-- 修复 Windows 发布版启动和环境检测时反复弹出命令行窗口的问题：恢复 Tauri 主程序的 release GUI 子系统属性，并统一隐藏后台 `where`、`reg`、`vswhere`、CMake/MSBuild 等子进程窗口。
-- 修复 Windows 2025 legacy SDK 构建前运行 `generate_solution_win.bat` 触发管理员权限要求的问题：改为直接调用 Maxon `projecttool` 生成工程，并对嵌套插件模块生成正确的 solution 条目；legacy Visual Studio 构建会直接调用目标 `.vcxproj`，在 VS2022 环境中覆盖使用 `v143` 工具集。
-- 修复 Windows 读取旧 SDK 配置时显示 `/Users/.../Documents/Maxon_SDK` 的问题：删除仓库内固定路径的旧 SDK 配置文件，加入忽略规则，并在加载和保存 SDK 根目录时将无盘符的 macOS/Linux 文档目录路径纠正为本机 `Documents\Maxon_SDK`。
-- 优化构建队列完成反馈：成功队列项改为绿色高亮，队列项显示构建耗时，整组队列结束后会弹出完成提示并写入成功、失败或停止总结。
-- 修复 macOS 2024.4 legacy SDK 中 `generated/hxx/register.cpp` 可能在 Xcode 编译前尚未生成的问题：构建插件前会主动预检查并生成核心 framework 和实际插件模块的 `register.cpp`，避免 source processor 与编译阶段竞态导致失败。
-- 修复构建队列预设重启后丢失的问题：预设现在持久化到应用数据目录的 JSON 文件中，并会自动迁移旧的 localStorage 数据。
-- 修复 macOS 2024.4 legacy SDK 偶发缺少 framework `generated/hxx/register.cpp` 导致 Xcode 构建失败的问题：检测到缺失生成文件后会先运行对应 framework 的 source processor，再重试插件构建。
-- 修复 macOS 发布版从 Finder 启动时检测不到 Homebrew CMake 的问题：环境检测现在会在 `PATH` 之外继续检查 `/opt/homebrew/bin/cmake`、`/usr/local/bin/cmake` 和 CMake.app。
-- 调整 SDK 解析优先级：优先使用 SDK Root 中已解压或已下载的官方扩展 SDK，其次使用 Maxon 官方下载地址，本机 Cinema 4D 安装目录中的 `sdk.zip` 只作为最后兼容兜底来源。
-- 修复 SDK 一键配置时后台任务 panic 可能导致发布版 App 直接闪退的问题，配置错误现在会返回到界面提示。
-- 恢复 SDK 一键配置的自动下载和解压能力：下载会先写入临时 zip，解压会先进入临时目录并校验 SDK 根目录，成功后再替换正式缓存，失败时只在配置报告中提示并清理半成品。
-- 新增崩溃诊断日志：Rust panic、React ErrorBoundary、前端全局错误和未处理 Promise rejection 会自动追加到应用日志目录下的 `crash.log`，SDK 一键配置也会记录下载、校验和解压阶段。
-- 修复打开设置或路径选择控件重渲染时 Tauri 拖拽监听重复释放导致的前端崩溃，事件监听清理现在会捕获同步和异步释放错误。
-- 将 SDK 来源配置从仓库内 `configs/sdk_sources.json` 迁移到用户配置目录，避免一键配置写入工作区文件触发开发模式热重载并导致 `Importing a module script failed`。
-- 兼容读取旧的 `src-tauri/configs/sdk_sources.json`，并为 React 根节点、前端全局崩溃监听、菜单语言监听和 macOS 窗口焦点监听补充热更新清理，避免开发模式下重复注册监听导致连锁崩溃。
-- SDK 一键配置新增实时进度提示，会显示保存配置、检测 C4D、下载、校验、解压和完成状态，下载阶段会按响应体大小显示百分比。
-- 将 SDK 一键配置进度提示提升到配置按钮下方，并在点击配置后自动滚动到进度区域，避免进度卡片被环境清单和后续内容挤到下面。
-- 优化偏好设置 SDK 配置页响应式布局，使用 shadcn `ScrollArea` 承载设置内容，并限制弹窗内部高度，避免窄窗口下内容无法滚动或被截断到窗口外。
+- 修复偏好设置关于页面显示旧版本号的问题：版本号现在直接读取 Tauri 运行时版本，并在“检查更新”没有新版本时提示“当前已是最新版本”。
+- 修复 legacy 构建后处理误把 `res/boghma.png` 之类二进制资源按 UTF-8 读取的问题，现在只扫描 `.vcxproj`、`.vcxproj.filters`、`SConscript`、`.cbp` 和 `project.pbxproj` 这些文本工程文件。
+- 修复 Boghma WaterMark 插件工程里 `dist-test-debug` 先于 `res` 命中的旧 include 顺序，源码现在显式指向真实 `res/c4d_symbols.h` 和 `res/description/vpboghmawatermark.h`。
+- 清理 legacy 生成工程中的 `dist-test-debug` 资源引用，降低重复打开 IDE 后再次命中旧副本的概率。
+- 新增 `docs/c4d-plugin-compiler-principle.md`，说明工具原理、内部流程、问题根因和流程图。
+- 在偏好设置中新增关于页面，展示当前应用版本，并提供手动检查更新、打开 GitHub 项目页和打开 GitHub Release 下载页的入口。
 
 ## 2026-06-22 v0.1.7
 
@@ -67,8 +49,8 @@
 
 ## 2026-06-22
 
-- 将 tag 发布流程改为构建成功后自动创建正式 GitHub Release，推送 `v*` tag 后可直接下载 Windows、macOS 和 updater 产物。
-- 将 GitHub Actions 发布流程改为 Windows 与 macOS 双平台矩阵构建，修正 Tauri updater JSON 输入名并移除手动构建中的 frontend dist 产物上传。
+- 把 tag 发布流程改为构建成功后自动创建正式 GitHub Release，推送 `v*` tag 后可直接下载 Windows、macOS 和 updater 产物。
+- 将 GitHub Actions 发布流程改为 Windows 和 macOS 双平台矩阵构建，修正 Tauri updater JSON 输入名并移除手动构建中的 frontend dist 产物上传。
 - 恢复 Rust 后端编译调度模块 `src-tauri/src/compiler/build.rs`，修复 Windows GitHub Actions Tauri 构建时找不到 `compiler::build` 模块的问题。
 - 使用 `npm@11.13.0` 重新同步 `package-lock.json` 的可选 peer 依赖，并将 GitHub Actions 中的 Vite+ 调用改为本地 `npm exec -- vp`，修复发布 workflow 的依赖安装失败和后续命令解析风险。
 - 新增 GitHub Actions 手动测试构建 workflow，可在不创建 Release 的情况下验证 Windows 构建链路并上传构建产物。
@@ -76,23 +58,23 @@
 - 将发布 workflow 收敛为仅由 `v*` tag 触发，发布版本时自动构建 Windows 安装包和 updater 产物，并恢复使用 `npm ci` 进行可复现安装。
 - 将 Tauri 构建前命令改为使用本地 Vite+ CLI，避免 GitHub Actions 中缺少全局 `vpr`。
 - 配置 GitHub Actions Windows 发布流程，生成安装包和 Tauri updater 的 `latest.json` 自动更新清单。
-- 配置 updater GitHub Release 端点和签名公钥，并修正平台配置中的应用标题。
+- 配置 updater GitHub Release 站点和签名公钥，并修正平台配置中的应用标题。
 - 更新应用 README，移除模板说明，并将项目许可改为 GPL-2.0-only。
 - 固定前端 Tauri npm 包版本，避免安装时升级到 2.10/2.11 后与 Rust crate 主次版本不匹配。
 
 ## 2026-06-20
 
 - 拆分 Rust 后端大文件：`compiler/build`、`compiler/package` 和 `compiler/sdk` 现在按构建调度、CMake、legacy SDK、资源复制、命名、zip、SDK 配置、本机安装检测和版本规则拆成更小模块。
-- 将 Rust 源码中的注释统一改为中文，保留必要的技术名词和示例代码，便于本地维护。
-- 清理 i18n 本地化：移除未使用的法语和阿语语言包，仅保留 `zh-CN` 与 `en-US`，并同步更新语言选择器和相关文档。
+- 将 Rust 源代码中的注释统一改为中文，保留必要的技术名词和示例代码，便于本地维护。
+- 清理 i18n 本地化：移除未使用的法语和阿语语言包，仅保留 `zh-CN` 和 `en-US`，并同步更新语言选择器和相关文档。
 - 删除设置窗口中未使用的高级页面和模板示例翻译，设置页现在只保留 SDK 配置与外观两类实际功能。
 - 按中文文案校准英文语言包，更新应用名称、设置说明、编译器副标题和队列空状态等文本，使英文界面与当前 C4D 插件编译器语义一致。
-- 构建队列标题栏新增重新开始按钮，可以把成功、失败或运行过的队列项重置为等待状态，便于一键重新运行整组多插件构建。
+- 构建队列标题栏新增重新开始按钮，可把成功、失败或运行过的队列项重置为等待状态，便于一键重新运行整组多插件构建。
 - 构建队列新增“保存为预设”和“加载预设”功能，队列预设会保存多个插件各自的多版本构建参数，方便后续一键恢复批量构建队列。
 - 构建日志工具栏新增清空按钮，可以在保留筛选和自动滚动设置的同时清理当前日志列表。
-- 修复编译工作台左右布局自适应问题：左侧队列工具栏不再被截断，右侧主面板会填满窗口剩余宽度。
-- 修复跨版本 CMake SDK 构建时 Windows preset 固定为旧版 `windows_vs2022_v143` 的问题：2026 SDK 会自动使用 `windows_vs2022_v143_x64`，旧 SDK 仍回退到 `windows_vs2022_v143`。
-- 修复 Windows 输出包只复制二进制、遗漏内嵌模块 `res` 的问题：每个输出插件文件夹都会包含 `res` 文件夹，可直接在 Cinema 4D 中指认为插件目录。
+- 修复编译工作台左右布局自适应问题，左侧队列工具栏不再被截断，右侧主面板会填满窗口剩余宽度。
+- 修复跨版本 CMake SDK 构建时 Windows preset 固定为旧版 `windows_vs2022_v143` 的问题，2026 SDK 会自动使用 `windows_vs2022_v143_x64`，旧 SDK 仍回退到 `windows_vs2022_v143`。
+- 修复 Windows 输出包只复制二进制、遗漏内嵌模块 `res` 的问题：每个输出插件文件夹都会包含 `res` 文件夹，可直接在 Cinema 4D 中识别为插件目录。
 - 将队列预设从构建队列标题栏拆分为独立面板，支持新建、改名、加载、保存和删除，并继续持久化保存预设内容。
 - 队列项现在可以编辑：点击编辑会把该项构建参数载入左侧表单，修改后可保存回原队列项，并会重置该项为等待状态。
 - 构建队列新增上下移动按钮，可以在运行队列前调整多个插件构建任务的顺序。
@@ -100,38 +82,38 @@
 
 ## 2026-06-19
 
-- 新增构建队列模式：可以把多个插件的构建参数加入队列，每个队列项保留自己的多个 C4D 版本、构建配置和打包设置，并按顺序一次性编译。
+- 新增构建队列模式：可将多个插件的构建参数加入队列，每个队列项保留自己的多 C4D 版本、构建配置和打包设置，并按顺序一次性编译。
 - 队列面板新增加入队列、运行队列、清空队列和移除队列项操作；队列任务会显示插件名、版本标签和执行状态，失败时停止后续队列以便查看日志。
 - 简化构建参数：移除界面上的 Module 输入，Package 会作为发布包名和内部 SDK 模块名；选择插件目录时会重新自动填充 Package，避免切换插件后沿用上一个包名。
 - 将构建队列移动到左侧底部，并将日志和产物改为同一主面板内的标签页，避免日志与产物横向挤压。
 - 修复 2024.4 legacy SDK 插件在生成嵌套或大小写不同的 Xcode 工程时构建失败的问题，例如 `Draw.back/draw.back/project/draw.back.xcodeproj`。
-- 还原编译工作台中日志与产物并列的主内容布局，移除左右 sidebar 和标题栏上的 sidebar 切换按钮；命令面板、菜单和快捷键中也同步移除 sidebar 开关入口。
-- 重做左侧 SDK 配置流程：新增“智能体检”和“一键配置”，按“检测本机 C4D → 匹配 SDK → 官方下载 zip → 本地解压配置 → 检查必须工具链”的顺序展示状态。
-- 新增 SDK 配置规则说明和必须环境清单；自动配置失败时，用户可以把已解压 SDK 或官方 SDK zip 放入 SDK 根目录后刷新重新扫描。
+- 还原编译工作台中日志与产物并列的主内容布局，移除左侧 sidebar 和标题栏上的 sidebar 切换按钮；命令面板、菜单和快捷键中也同步移除 sidebar 开关入口。
+- 重新做左侧 SDK 配置流程：新增“智能体检”和“一键配置”，按“检测本机 C4D -> 匹配 SDK -> 官方下载 zip -> 本地解压配置 -> 检查必要工具”的顺序展示状态。
+- 新增 SDK 配置规则说明和必要环境清单；自动配置失败时，用户可以把已解压 SDK 或官方 SDK zip 放入 SDK 根目录后刷新重新扫描。
 - 新增后端 SDK setup 报告命令，区分可自动准备的 SDK/CMake 提示和需要用户手动安装的 Xcode、Visual Studio、Windows SDK 等系统工具。
 - 将 SDK 配置从左侧 sidebar 移到设置窗口的 SDK 配置页，避免窄侧栏截断路径、按钮和环境检查内容；左侧栏改为打开设置页的轻量入口。
 - SDK 矩阵现在会标记未安装对应 Cinema 4D 的版本，并在选中详情中提示用户先安装对应版本的 C4D。
 - 调整发布产物命名：版本号只保留 Cinema 4D 大版本，例如 `2024.4` 输出为 `2024`；Release 产物不再带配置后缀，只有 Debug 产物追加 `_Debug`。
 - 修复未安装或未配置 2025 SDK 时仍默认触发 2025 构建的问题：构建版本现在只从本地已解析的 SDK root、SDK 压缩包或本机 `sdk.zip` 中自动生成，官方下载地址只作为可见来源，不再自动加入构建队列。
 - 修复损坏 SDK 压缩包被误识别为可构建来源的问题：无效 zip 现在会显示为 `invalid configured archive` 或 `invalid installed sdk.zip`，不会自动加入构建队列；官方下载缓存损坏时会先删除再重新下载。
-- 修复 2026 CMake SDK 构建带空格模块名时失败的问题，CMake target 会自动转换为无空格名称，并会清理旧模块别名链接，避免 `target_compile_definitions called with invalid arguments`。
+- 修复 2026 CMake SDK 构建带空格模块名时失败的问题，CMake target 会自动转换为无空格名称，并会清理旧模块别名链路，避免 `target_compile_definitions called with invalid arguments`。
 - 修复保存构建日志失败的问题，日志文件现在通过 Rust 后端写入，不再受前端 `fs.write_text_file` scope 限制。
 - 优化构建失败摘要，Xcode 或 Clang 失败时会优先显示真实 `error:` 附近上下文，不再只显示最后的构建命令摘要。
 - 优化 SDK 解析速度，列出和解析 SDK 时不再对官方下载地址执行网络 HEAD 探测，避免缺失版本在配置阶段长时间卡住。
 - 新增结构化构建日志系统：日志事件包含时间戳、等级和类别，日志面板支持颜色区分、等级筛选、类别筛选、自动滚动开关，并按当前筛选结果复制或另存为 `.log`。
 - 修复点击构建按钮无响应的问题：SDK 解析、环境检测和 SDK 配置命令现在会在 Tauri blocking task 中执行，避免 `reqwest::blocking` 在 async runtime 中触发 Tokio runtime shutdown panic。
-- 优化构建启动流程，SDK 解析失败时会立即恢复失败状态并写入构建日志，不再继续启动构建任务或让界面停留在运行中状态。
+- 优化构建启动流程，SDK 解析失败时会立刻恢复失败状态并写入构建日志，不再继续启动构建任务或让界面停留在运行中状态。
 - 修复 2024.4 legacy SDK 构建时复制插件目录失败的问题，工作区复制现在会跳过 `.git`、缓存、构建产物目录和 Unix socket 等特殊文件。
-- 修复编译工作台右侧信息重复的问题，产物和输出预览现在合并为同一面板的切换视图；同时修复构建日志区域无法滚动查看的问题，并在失败状态中直接显示最近错误。
+- 修复编译工作台右侧信息重复的 문제，产物和输出预览现在合并为同一面板的切换视图；同时修复构建日志区域无法滚动查看的问题，并在失败状态中直接显示最近错误。
 - 修复 macOS 2024.4 legacy Xcode 工程 scheme 大小写不一致导致的构建失败，构建前会读取 Xcode scheme 列表并自动选择匹配的插件 scheme。
-- 将产物和输出预览移动到右侧可折叠栏中，默认保持关闭；SDK 矩阵中已经解析到的配置项会显示为绿色状态文字。
+- 将产物和输出预览移动到右侧可折叠栏中，默认保持关闭；SDK 矩阵中已经解析到的配置项会显示为绿色状态文本。
 - 构建失败摘要支持在进度面板内滚动查看；核心构建日志新增复制和另存为 `.log` 文件按钮，并允许直接选择日志文本复制。
 
 ## 2026-06-18
 
 - 修复 SDK 根目录配置后的版本解析逻辑：SDK Matrix 现在始终保留 2024.4、2025 和 2026 可选项，并会在配置根目录中递归识别对应版本的 SDK 根目录或 SDK 压缩包。
-- 调整 SDK 来源优先级为配置根目录、本机 Cinema 4D `sdk.zip`、本地缓存、官方下载，避免可用的 2024.4 本机 SDK 被 2026 或官方下载流程覆盖。
-- 兼容旧版 `configs/sdk_sources.json` 分版本配置读取，避免已有 SDK 配置在新版单根目录配置中被忽略。
+- 调整 SDK 资源优先级为配置根目录、本机 Cinema 4D `sdk.zip`、本地缓存、官方下载，避免可用的 2024.4 本机 SDK 被 2026 或官方下载流程覆盖。
+- 兼容旧版 `configs/sdk_sources.json` 分版本配置读取，避免已有 SDK 配置在新版本单根目录配置中被忽略。
 - 将编译器内部构建缓存迁移到用户目录下的无空格路径，避免 Maxon CMake/Xcode 脚本在 `Application Support` 路径中生成 2026 工程失败。
 - 将外部插件临时链接目录从 `modules` 改为 `plugin-links`，避免 Maxon CMake 将普通插件误判为需要 `exportedsymbols.txt` 的非插件模块。
 - 清理构建时同步清理对应 SDK preset 的 CMake 生成目录，避免模块文件变化后继续复用过期工程缓存。
@@ -140,22 +122,8 @@
 - 调整主窗口默认布局，启动时默认隐藏左右侧栏，保留标题栏按钮用于按需展开。
 - 新增 macOS C4D C++ 插件编译支持，使用 Maxon SDK `macos_universal_xcode` preset 生成 Xcode Universal 构建目录。
 - 新增 macOS 环境检测，显示 Xcode、Clang、Python、CMake preset 和 `.xlib` 插件二进制扩展名。
-- 新增 macOS Cinema 4D 安装与 `/Applications/Maxon Cinema 4D <version>/sdk.zip` 检测，并支持构建时创建模块符号链接。
+- 新增 macOS Cinema 4D 安装中 `/Applications/Maxon Cinema 4D <version>/sdk.zip` 检测，并支持构建时创建模块符号链接。
 - 更新输出预览和中英文用户指南，说明 Windows `.xdl64` 与 macOS `.xlib` 产物差异。
-
-## 2026-06-15
-
-- 移除左侧 SDK Sources 中重复的 C4D 起始版本选择，并让 SDK Matrix 与构建版本下限自动从本机最小 Cinema 4D 安装版本开始。
-- 简化 SDK Sources 配置为单一 SDK 根目录，新增自动检测本机 Cinema 4D 版本、自动映射 Maxon C++ SDK 下载地址和按版本目录缓存 SDK 的流程。
-- 修复左侧 SDK Sources 面板版本列表为空的问题，SDK 版本列表不再依赖联网探测，并兼容 Cinema 4D 2024.4 对应的本机 2024 安装目录。
-- 修复标题栏左右侧栏按钮不生效的问题，恢复可折叠的左侧 SDK 配置栏和右侧文件树预览栏。
-- 新增 SDK Sources 面板，支持 Cinema 4D 2024.4 及之后版本的 SDK root、sdk.zip 和 download URL 配置。
-- 新增 C4D 起始版本选择，默认从 2024.4 开始，并自动选中该版本之后的可用 SDK 版本作为构建标签。
-- 将 Plugin Root、Output Dir 和 SDK 路径配置升级为支持文件/目录选择和拖拽的路径输入。
-- 新增输出文件树预览，根据当前包名、版本、构建配置、打包模式和 zip 开关展示将生成的目录结构。
-- 为构建参数、SDK 配置和主要按钮增加问号提示图标，鼠标悬浮可查看说明。
-- 新增 Rust SDK 配置命令，用于读取、保存、删除 SDK 来源，并列出可用 SDK 版本。
-- 更新中英文用户指南和开发文档，说明侧栏、路径选择、版本选择和 SDK 配置流程。
 
 ## 初始版本
 

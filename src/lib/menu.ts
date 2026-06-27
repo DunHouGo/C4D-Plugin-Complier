@@ -10,6 +10,7 @@ import {
   Submenu,
   PredefinedMenuItem,
 } from '@tauri-apps/api/menu'
+import { getVersion } from '@tauri-apps/api/app'
 import i18n from '@/i18n/config'
 import { useUIStore } from '@/store/ui-store'
 import { logger } from '@/lib/logger'
@@ -104,9 +105,7 @@ export function setupMenuLanguageListener(): () => void {
 function handleAbout(): void {
   const appName = i18n.t('app.name')
   logger.info('About menu item clicked')
-  alert(
-    `${appName}\n\nVersion: ${__APP_VERSION__}\n\nBuilt with Tauri v2 + React + TypeScript`
-  )
+  void showAboutDialog(appName)
 }
 
 async function handleCheckForUpdates(): Promise<void> {
@@ -121,4 +120,18 @@ async function handleCheckForUpdates(): Promise<void> {
 function handleOpenPreferences(): void {
   logger.info('Preferences menu item clicked')
   useUIStore.getState().setPreferencesOpen(true)
+}
+
+async function showAboutDialog(appName: string): Promise<void> {
+  try {
+    const version = await getVersion()
+    alert(
+      `${appName}\n\nVersion: ${version}\n\nBuilt with Tauri v2 + React + TypeScript`
+    )
+  } catch (error) {
+    logger.error('Failed to read app version for About dialog', { error })
+    alert(
+      `${appName}\n\nVersion: ${__APP_VERSION__}\n\nBuilt with Tauri v2 + React + TypeScript`
+    )
+  }
 }
