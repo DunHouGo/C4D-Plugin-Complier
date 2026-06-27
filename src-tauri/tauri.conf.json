@@ -6,7 +6,7 @@
   "build": {
     "removeUnusedCommands": true,
     "beforeDevCommand": "npm exec -- vp dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://127.0.0.1:1680",
     "beforeBuildCommand": "npm exec -- vp exec tsc --noEmit && npm exec -- vp build",
     "frontendDist": "../dist"
   },

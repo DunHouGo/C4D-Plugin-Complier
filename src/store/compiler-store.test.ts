@@ -52,13 +52,13 @@ describe('CompilerStore', () => {
     })
   })
 
-  it('uses package name as the internal module name', () => {
+  it('keeps the detected module name when package name changes', () => {
     const { updatePackageName } = useCompilerStore.getState()
 
     updatePackageName('Back Highlight')
 
     expect(useCompilerStore.getState().request).toMatchObject({
-      module_name: 'Back Highlight',
+      module_name: '',
       package_name: 'Back Highlight',
     })
   })

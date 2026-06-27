@@ -5,11 +5,11 @@ C4D Plugin Compiler builds and packages Cinema 4D C++ plugins with locally confi
 ## Build Setup
 
 - Plugin Root: the plugin module folder that contains `project/`, `source/`, and optional `res/`.
-- Package: the generated package folder name and internal SDK module name. Selecting Plugin Root fills it from the folder name; editing Package updates the internal module name too. For 2026 CMake SDK builds, spaces are converted to a target-safe name internally, and a single nested SDK module such as `BackHighlight/draw.back/project/projectdefinition.txt` is used as the actual target.
+- Package: the generated package folder name. The SDK module name stays aligned with the official plugin layout or `sdk_custom_paths.txt`; a single nested SDK module such as `BackHighlight/draw.back/project/projectdefinition.txt` is used as the actual target.
 - C4D Versions: generated from buildable SDK sources only. Missing versions that only have an official download URL are shown in the SDK Matrix but skipped by default.
 - Configuration: `Debug`, `Release`, or `Both`.
-- Package Mode: `Merged`, `Per Version`, or `Both`.
-- Artifact naming: output names use only the C4D major version; Release has no suffix and Debug adds `_Debug`.
+- Package Mode: `Merged`, `Per Version`, or `Both`. Merged output keeps one package folder and places each version/configuration binary directly inside it; Per Version creates separate top-level folders per version.
+- Artifact naming: folder names use only the C4D major version; Release has no suffix and Debug adds `_Debug`. Binary filenames keep the official SDK module name.
 - Output Dir: package output folder. Empty uses `Plugin Root\dist`.
 - Zip, Clean, Refresh SDK: control archive output, output cleanup, and SDK cache refresh.
 

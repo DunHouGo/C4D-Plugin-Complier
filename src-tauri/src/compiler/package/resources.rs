@@ -24,15 +24,35 @@ pub(super) fn copy_resources(
     }
 }
 
-fn find_resource_dir(plugin_root: &Path, binary: &Path) -> Option<PathBuf> {
-    let direct = plugin_root.join("res");
-    if direct.is_dir() {
-        return Some(direct);
+pub(super) fn copy_plugin_lib_directories(
+    plugin_root: &Path,
+    package_dir: &Path,
+) -> Result<(), String> {
+    for directory_name in ["libs"] {
+        let source = plugin_root.join(directory_name);
+        if !source.is_dir() {
+            continue;
+        }
+
+        let target = package_dir.join(directory_name);
+        if target.exists() {
+            remove_path(&target)?;
+        }
+        copy_dir_recursive(&source, &target)?;
     }
 
+    Ok(())
+}
+
+fn find_resource_dir(plugin_root: &Path, binary: &Path) -> Option<PathBuf> {
     let built = binary.parent()?.join("res");
     if built.is_dir() {
         return Some(built);
+    }
+
+    let direct = plugin_root.join("res");
+    if direct.is_dir() {
+        return Some(direct);
     }
 
     find_nested_resource_dir(plugin_root)
@@ -67,5 +87,68 @@ fn path_contains_ignored_component(root: &Path, path: &Path) -> bool {
         .into_iter()
         .flat_map(|relative| relative.components())
         .filter_map(|component| component.as_os_str().to_str())
-        .any(|name| matches!(name, ".git" | "build" | "dist" | "node_modules" | "target"))
+        .any(|name| {
+            matches!(
+                name,
+                ".git" | "build" | "dist" | "dist-test-debug" | "node_modules" | "target"
+            )
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::copy_resources;
+
+    #[test]
+    fn copy_resources_prefers_built_res_over_plugin_root_res() {
+        let temp = TempTree::new("c4d-package-res-priority");
+        let plugin_root = temp.path().join("Plugin");
+        let binary = temp.path().join("build").join("bin").join("Release").join("Plugin.xdl64");
+        let package_dir = temp.path().join("dist");
+        let built_res = binary.parent().unwrap().join("res");
+        let root_res = plugin_root.join("res");
+
+        std::fs::create_dir_all(&built_res).unwrap();
+        std::fs::create_dir_all(root_res.join("description")).unwrap();
+        std::fs::create_dir_all(plugin_root.join("project")).unwrap();
+        std::fs::create_dir_all(plugin_root.join("source")).unwrap();
+        std::fs::create_dir_all(package_dir.join("res")).unwrap();
+        std::fs::write(built_res.join("marker.txt"), "new").unwrap();
+        std::fs::write(root_res.join("marker.txt"), "old").unwrap();
+
+        copy_resources(&plugin_root, &binary, &package_dir).unwrap();
+
+        assert!(package_dir.join("res").join("marker.txt").is_file());
+        let contents = std::fs::read_to_string(package_dir.join("res").join("marker.txt")).unwrap();
+        assert_eq!(contents, "new");
+    }
+
+    struct TempTree {
+        path: PathBuf,
+    }
+
+    impl TempTree {
+        fn new(name: &str) -> Self {
+            let millis = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock before unix epoch")
+                .as_millis();
+            let path = std::env::temp_dir().join(format!("{name}-{millis}"));
+            std::fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TempTree {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
 }

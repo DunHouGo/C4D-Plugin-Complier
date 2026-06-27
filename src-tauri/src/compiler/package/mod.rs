@@ -13,7 +13,7 @@ mod resources;
 use archive::create_zip_archive;
 use fs::remove_path;
 use naming::{package_binary_name, package_folder_name};
-use resources::copy_resources;
+use resources::{copy_plugin_lib_directories, copy_resources};
 
 pub fn package_outputs(
     request: &BuildRequest,
@@ -73,6 +73,7 @@ fn create_merged_package(
     let plugin_root = Path::new(&request.plugin_root);
     for (version, configuration, binary) in built_binaries {
         copy_resources(plugin_root, binary, &package_dir)?;
+        copy_plugin_lib_directories(plugin_root, &package_dir)?;
         let suffix = binary
             .extension()
             .and_then(|value| value.to_str())
@@ -104,6 +105,13 @@ fn create_merged_package(
     Ok(artifacts)
 }
 
+fn packaged_binary_name(binary: &Path) -> Result<PathBuf, String> {
+    binary
+        .file_name()
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("Invalid built binary path: {}", binary.display()))
+}
+
 fn create_per_version_packages(
     request: &BuildRequest,
     built_binaries: &[(String, String, PathBuf)],
@@ -123,14 +131,9 @@ fn create_per_version_packages(
         std::fs::create_dir_all(&package_dir)
             .map_err(|error| format!("Failed to create {}: {error}", package_dir.display()))?;
         copy_resources(Path::new(&request.plugin_root), binary, &package_dir)?;
+        copy_plugin_lib_directories(Path::new(&request.plugin_root), &package_dir)?;
 
-        let suffix = binary
-            .extension()
-            .and_then(|value| value.to_str())
-            .map(|value| format!(".{value}"))
-            .unwrap_or_default();
-        let target_name =
-            package_binary_name(&request.package_name, version, configuration, &suffix);
+        let target_name = packaged_binary_name(binary)?;
         std::fs::copy(binary, package_dir.join(target_name))
             .map_err(|error| format!("Failed to copy {}: {error}", binary.display()))?;
 
@@ -189,13 +192,72 @@ mod tests {
         .unwrap();
 
         let package = temp.path().join("dist").join("BackHighlight_2025");
-        assert!(package.join("BackHighlight 2025.xdl64").is_file());
+        assert!(package.join("draw.back.xdl64").is_file());
         assert!(package.join("res").join("c4d_symbols.h").is_file());
         assert!(package
             .join("res")
             .join("description")
             .join("drawback.res")
             .is_file());
+    }
+
+    #[test]
+    fn per_version_package_copies_plugin_lib_directories() {
+        let temp = TempTree::new("c4d-package-runtime");
+        let plugin = temp.path().join("Plugin");
+        let binary = temp.path().join("build").join("postwatermark.xdl64");
+        let libs = plugin.join("libs").join("shared");
+        std::fs::create_dir_all(&libs).unwrap();
+        std::fs::create_dir_all(binary.parent().unwrap()).unwrap();
+        std::fs::write(libs.join("helper.txt"), "runtime").unwrap();
+        std::fs::write(&binary, "binary").unwrap();
+
+        let request = test_request(&plugin, temp.path().join("dist"));
+        package_outputs(
+            &request,
+            &[("2026".to_string(), "Release".to_string(), binary)],
+        )
+        .unwrap();
+
+        let package = temp.path().join("dist").join("BackHighlight_2026");
+        assert!(package.join("postwatermark.xdl64").is_file());
+        assert!(package.join("libs").join("shared").join("helper.txt").is_file());
+    }
+
+    #[test]
+    fn merged_package_keeps_binaries_in_single_folder() {
+        let temp = TempTree::new("c4d-package-merged");
+        let plugin = temp.path().join("Plugin");
+        let binary_2025 = temp
+            .path()
+            .join("build")
+            .join("2025")
+            .join("postwatermark.xdl64");
+        let binary_2026 = temp
+            .path()
+            .join("build")
+            .join("2026")
+            .join("postwatermark.xdl64");
+        std::fs::create_dir_all(&plugin).unwrap();
+        std::fs::create_dir_all(binary_2025.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(binary_2026.parent().unwrap()).unwrap();
+        std::fs::write(&binary_2025, "binary-2025").unwrap();
+        std::fs::write(&binary_2026, "binary-2026").unwrap();
+
+        let mut request = test_request(&plugin, temp.path().join("dist"));
+        request.package_mode = PackageMode::Merged;
+        package_outputs(
+            &request,
+            &[
+                ("2025".to_string(), "Release".to_string(), binary_2025),
+                ("2026".to_string(), "Release".to_string(), binary_2026),
+            ],
+        )
+        .unwrap();
+
+        let package = temp.path().join("dist").join("BackHighlight");
+        assert!(package.join("postwatermark 2025.xdl64").is_file());
+        assert!(package.join("postwatermark 2026.xdl64").is_file());
     }
 
     #[test]

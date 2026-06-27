@@ -7,6 +7,7 @@ import { defineConfig } from "vite-plus";
 const host = process.env.TAURI_DEV_HOST;
 const appVersion = process.env.npm_package_version ?? "0.0.0";
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
+const devHost = host || "127.0.0.1";
 
 export default defineConfig({
   define: {
@@ -28,14 +29,14 @@ export default defineConfig({
   },
   clearScreen: false,
   server: {
-    port: 1420,
+    port: 1680,
     strictPort: true,
-    host: host || false,
+    host: devHost,
     hmr: host
       ? {
           protocol: "ws",
           host,
-          port: 1421,
+          port: 1681,
         }
       : undefined,
     watch: {

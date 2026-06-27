@@ -200,7 +200,6 @@ export const useCompilerStore = create<CompilerState>()(
           state => ({
             request: {
               ...state.request,
-              module_name: packageName,
               package_name: packageName,
             },
           }),

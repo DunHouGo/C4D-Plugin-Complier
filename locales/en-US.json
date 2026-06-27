@@ -76,7 +76,7 @@
   "compiler.fields.outputDir": "Output Dir",
   "compiler.help.pluginRoot": "Choose the Cinema 4D plugin module folder that contains project, source, and optional res folders.",
   "compiler.help.module": "CMake target/module folder name under the SDK plugins path.",
-  "compiler.help.package": "Release package name, internal SDK module name, and output plugin folder name. Selecting a plugin root fills it automatically; rename it when needed.",
+  "compiler.help.package": "Release package and output folder name. The SDK module name is detected from the official plugin layout or sdk_custom_paths.txt.",
   "compiler.help.c4dVersions": "Build versions come from configured SDKs. Pick a start version and all later versions are selected automatically.",
   "compiler.help.configuration": "Choose Debug, Release, or both CMake build configurations.",
   "compiler.help.packageMode": "Merged creates one package with all versions. Per Version creates a folder per version/configuration. Both creates both layouts.",

@@ -70,7 +70,13 @@ pub fn execute_build(
             })?;
             log_sdk(log, job_id, &format!("Using CMake preset '{preset}'"));
 
-            let module_alias_name = cmake_target_name(&request.module_name);
+            let requested_module_name = resolve_requested_module_name(
+                Path::new(&request.plugin_root),
+                &request.module_name,
+                log,
+                job_id,
+            );
+            let module_alias_name = cmake_target_name(&requested_module_name);
             let build_module_name = resolve_cmake_build_module_name(
                 Path::new(&request.plugin_root),
                 &module_alias_name,
@@ -123,11 +129,23 @@ pub fn execute_build(
                 built_binaries.push((version.clone(), configuration.to_string(), binary));
             }
         } else if is_legacy_sdk_root(&sdk_root) {
-            let legacy_module = prepare_legacy_module_workspace(&sdk_root, request, log, job_id)?;
+            let requested_module_name = resolve_requested_module_name(
+                Path::new(&request.plugin_root),
+                &request.module_name,
+                log,
+                job_id,
+            );
+            let legacy_module = prepare_legacy_module_workspace(
+                &sdk_root,
+                request,
+                &requested_module_name,
+                log,
+                job_id,
+            )?;
             generate_legacy_projects(&sdk_root, log, job_id)?;
             prepare_legacy_framework_generated_files(&sdk_root, log, job_id)?;
             sanitize_legacy_generated_projects(
-                &sdk_root.join("plugins").join(&request.module_name),
+                &sdk_root.join("plugins").join(&requested_module_name),
                 log,
                 job_id,
             )?;
@@ -389,6 +407,59 @@ fn cmake_target_name(module_name: &str) -> String {
     }
 }
 
+fn resolve_requested_module_name(
+    plugin_root: &Path,
+    requested_module_name: &str,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> String {
+    if let Some(module_name) = module_name_from_custom_paths(plugin_root) {
+        if module_name != requested_module_name {
+            log_warn(
+                log,
+                job_id,
+                "cmake",
+                &format!(
+                    "Using SDK custom module name '{module_name}' instead of package name '{requested_module_name}'"
+                ),
+            );
+        }
+        return module_name;
+    }
+
+    requested_module_name.to_string()
+}
+
+fn module_name_from_custom_paths(plugin_root: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(plugin_root.join("sdk_custom_paths.txt")).ok()?;
+    let mut modules = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(module_name_from_custom_paths_line)
+        .collect::<Vec<_>>();
+
+    modules.sort();
+    modules.dedup();
+
+    match modules.as_slice() {
+        [module] => Some(module.clone()),
+        _ => None,
+    }
+}
+
+fn module_name_from_custom_paths_line(line: &str) -> Option<String> {
+    let mut parts = line.split_whitespace();
+    if !parts.next()?.eq_ignore_ascii_case("MODULE") {
+        return None;
+    }
+    let module_path = parts.next()?.trim_matches('"').trim_matches('\'');
+    module_path
+        .rsplit(['/', '\\'])
+        .find(|item| !item.is_empty())
+        .map(ToString::to_string)
+}
+
 fn resolve_cmake_build_module_name(
     plugin_root: &Path,
     requested_module_name: &str,
@@ -495,15 +566,16 @@ fn build_target(
 fn prepare_legacy_module_workspace(
     sdk_root: &Path,
     request: &BuildRequest,
+    module_name: &str,
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<LegacyModule, String> {
-    let module_root = sdk_root.join("plugins").join(&request.module_name);
+    let module_root = sdk_root.join("plugins").join(module_name);
     if module_root.exists() {
         remove_link_or_dir_cross_platform(&module_root)?;
     }
     copy_dir_recursive(Path::new(&request.plugin_root), &module_root)?;
-    let legacy_module = resolve_legacy_module(&module_root, &request.module_name, log, job_id)?;
+    let legacy_module = resolve_legacy_module(&module_root, module_name, log, job_id)?;
     ensure_legacy_solution_includes_module(sdk_root, &legacy_module.solution_entry)?;
     log_sdk(
         log,
@@ -1496,13 +1568,17 @@ fn sanitize_legacy_project_file(path: &Path) -> Result<Option<String>, String> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
 
-    let updated = if path.file_name().and_then(|value| value.to_str()).is_some_and(|file_name| {
-        file_name.ends_with(".vcxproj")
-    }) {
+    let updated = if path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|file_name| file_name.ends_with(".vcxproj"))
+    {
         sanitize_vcxproj_text(&text)
-    } else if path.file_name().and_then(|value| value.to_str()).is_some_and(|file_name| {
-        file_name.ends_with(".vcxproj.filters")
-    }) {
+    } else if path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_some_and(|file_name| file_name.ends_with(".vcxproj.filters"))
+    {
         sanitize_dist_test_debug_lines(&text)
     } else if path.file_name().and_then(|value| value.to_str()) == Some("SConscript") {
         sanitize_sconscript_text(&text)
@@ -1804,6 +1880,22 @@ mod tests {
     }
 
     #[test]
+    fn requested_module_name_prefers_sdk_custom_paths_module() {
+        let plugin = TempTree::new("c4d-custom-paths-module");
+        std::fs::write(
+            plugin.path().join("sdk_custom_paths.txt"),
+            "MODULE /Users/dunhou/dev/C4D_MODULE_ALIASES/postwatermark_modules/postwatermark",
+        )
+        .unwrap();
+
+        let log = |_event: BuildLogEvent| {};
+        let resolved =
+            resolve_requested_module_name(plugin.path(), "Boghma-WaterMark", &log, "test");
+
+        assert_eq!(resolved, "postwatermark");
+    }
+
+    #[test]
     fn cmake_build_module_name_uses_single_nested_projectdefinition_module() {
         let plugin = TempTree::new("c4d-nested-plugin");
         std::fs::create_dir_all(plugin.path().join("draw.back").join("project")).unwrap();
@@ -1959,13 +2051,27 @@ mod tests {
 
     #[test]
     fn legacy_generated_project_text_file_filter_rejects_binary_resources() {
-        assert!(is_legacy_generated_project_text_file(Path::new("boghma.vcxproj")));
-        assert!(is_legacy_generated_project_text_file(Path::new("boghma.vcxproj.filters")));
-        assert!(is_legacy_generated_project_text_file(Path::new("SConscript")));
-        assert!(is_legacy_generated_project_text_file(Path::new("boghma.cbp")));
-        assert!(is_legacy_generated_project_text_file(Path::new("project.pbxproj")));
-        assert!(!is_legacy_generated_project_text_file(Path::new("boghma.png")));
-        assert!(!is_legacy_generated_project_text_file(Path::new("c4d_symbols.h")));
+        assert!(is_legacy_generated_project_text_file(Path::new(
+            "boghma.vcxproj"
+        )));
+        assert!(is_legacy_generated_project_text_file(Path::new(
+            "boghma.vcxproj.filters"
+        )));
+        assert!(is_legacy_generated_project_text_file(Path::new(
+            "SConscript"
+        )));
+        assert!(is_legacy_generated_project_text_file(Path::new(
+            "boghma.cbp"
+        )));
+        assert!(is_legacy_generated_project_text_file(Path::new(
+            "project.pbxproj"
+        )));
+        assert!(!is_legacy_generated_project_text_file(Path::new(
+            "boghma.png"
+        )));
+        assert!(!is_legacy_generated_project_text_file(Path::new(
+            "c4d_symbols.h"
+        )));
     }
 
     #[test]

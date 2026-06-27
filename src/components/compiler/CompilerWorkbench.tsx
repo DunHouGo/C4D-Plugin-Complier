@@ -351,6 +351,7 @@ export function CompilerWorkbench() {
   }
 
   async function startBuild() {
+    const nextRequest = useCompilerStore.getState().request
     setRunningQueueItemId(null)
     runningQueueItemIdRef.current = null
     setStopQueueAfterCurrent(false)
@@ -358,7 +359,7 @@ export function CompilerWorkbench() {
     setLogs([])
     setArtifacts([])
     setProgress(null)
-    await runBuildRequest(request)
+    await runBuildRequest(nextRequest)
   }
 
   async function cancelBuild() {
@@ -378,15 +379,16 @@ export function CompilerWorkbench() {
   }
 
   function addCurrentRequestToQueue() {
+    const nextRequest = useCompilerStore.getState().request
     if (editingQueueItemId) {
-      updateBuildQueueItemRequest(editingQueueItemId, request)
+      updateBuildQueueItemRequest(editingQueueItemId, nextRequest)
       setLogs(current => [
         ...current,
         systemLog(
           'info',
           t('compiler.queue.updatedLog', {
-            name: queueItemLabel({ request }),
-            versions: request.versions.join(', '),
+            name: queueItemLabel({ request: nextRequest }),
+            versions: nextRequest.versions.join(', '),
           })
         ),
       ])
@@ -394,14 +396,14 @@ export function CompilerWorkbench() {
       return
     }
 
-    addBuildQueueItem(request)
+    addBuildQueueItem(nextRequest)
     setLogs(current => [
       ...current,
       systemLog(
         'info',
         t('compiler.queue.addedLog', {
-          name: queueItemLabel({ request }),
-          versions: request.versions.join(', '),
+          name: queueItemLabel({ request: nextRequest }),
+          versions: nextRequest.versions.join(', '),
         })
       ),
     ])

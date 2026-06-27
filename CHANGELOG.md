@@ -2,6 +2,12 @@
 
 ## 未发布
 
+- 修复 Windows 下 `tauri dev` 绑定到被系统保留的开发端口导致无法启动的问题：开发服务器现在改用 `127.0.0.1:1680`，并同步调整 Tauri 的 `devUrl`。
+- 修复构建工作台在切换 `Package Mode`、队列编辑和直接构建时可能读到旧 request 的问题：启动构建与加入队列现在都从当前 store 读取最新请求，避免界面选择和实际提交参数不一致。
+- 修复打包时优先命中旧资源目录的问题：`copy_resources` 现在会优先使用最新构建产物旁边的 `res`，并忽略旧的 `dist-test-debug` 目录，避免把过期资源带进新包。
+- 修复 `Merged` 打包模式被误改成按版本独立落盘的问题：Merged 现在恢复为单个包目录下按版本并排输出，而 `Per Version` 继续保持各自独立目录。
+- 修复 2026 CMake SDK 打包偏离官方模块流程的问题：构建时会优先从 `sdk_custom_paths.txt` 检测真实模块名，打包时保留 Maxon 生成的模块二进制文件名，并让 Merged 与 Per Version 保持各自的目录语义，避免旧目录结构混入新包。
+- 修复付费插件打包只复制 `res` 导致运行时依赖缺失的问题：输出目录现在会复制插件自带 `libs`，并保持官方插件格式下的任意额外库目录一起打包，避免遗漏插件自带资源。
 - 修复偏好设置关于页面显示旧版本号的问题：版本号现在直接读取 Tauri 运行时版本，并在“检查更新”没有新版本时提示“当前已是最新版本”。
 - 修复 legacy 构建后处理误把 `res/boghma.png` 之类二进制资源按 UTF-8 读取的问题，现在只扫描 `.vcxproj`、`.vcxproj.filters`、`SConscript`、`.cbp` 和 `project.pbxproj` 这些文本工程文件。
 - 修复 Boghma WaterMark 插件工程里 `dist-test-debug` 先于 `res` 命中的旧 include 顺序，源码现在显式指向真实 `res/c4d_symbols.h` 和 `res/description/vpboghmawatermark.h`。

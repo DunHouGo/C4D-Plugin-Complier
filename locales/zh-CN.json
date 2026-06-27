@@ -76,7 +76,7 @@
   "compiler.fields.outputDir": "输出目录",
   "compiler.help.pluginRoot": "选择 Cinema 4D 插件模块文件夹，通常包含 project、source 和可选的 res 文件夹。",
   "compiler.help.module": "SDK plugins 路径下的 CMake target/模块文件夹名。",
-  "compiler.help.package": "发布包名称，也是内部 SDK 模块名和输出插件目录名称。选择插件根目录时会自动填充，可按需要改名。",
+  "compiler.help.package": "发布包和输出文件夹名称。SDK 模块名会从官方插件结构或 sdk_custom_paths.txt 自动检测。",
   "compiler.help.c4dVersions": "构建版本来自已配置的 SDK。选择起始版本后，会自动选中之后的所有版本。",
   "compiler.help.configuration": "选择 Debug、Release 或两种 CMake 构建配置。",
   "compiler.help.packageMode": "Merged 生成包含所有版本的一个包；Per Version 按版本/配置生成文件夹；Both 同时生成两种结构。",

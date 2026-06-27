@@ -50,10 +50,6 @@ mod tests {
             package_folder_name("Boghma WaterMark", "2024.4", "Release"),
             "Boghma WaterMark_2024"
         );
-        assert_eq!(
-            package_binary_name("Boghma WaterMark", "2024.4", "Release", ".xlib"),
-            "Boghma WaterMark 2024.xlib"
-        );
     }
 
     #[test]
@@ -61,10 +57,6 @@ mod tests {
         assert_eq!(
             package_folder_name("Boghma WaterMark", "2024.4", "Debug"),
             "Boghma WaterMark_2024_Debug"
-        );
-        assert_eq!(
-            package_binary_name("Boghma WaterMark", "2026", "Debug", ".xlib"),
-            "Boghma WaterMark 2026_Debug.xlib"
         );
     }
 }
