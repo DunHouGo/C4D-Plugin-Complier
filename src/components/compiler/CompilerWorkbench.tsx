@@ -143,6 +143,9 @@ export function CompilerWorkbench() {
   const [runningQueueItemId, setRunningQueueItemId] = useState<string | null>(
     null
   )
+  const [buildStartedAt, setBuildStartedAt] = useState<number | null>(null)
+  const [buildFinishedAt, setBuildFinishedAt] = useState<number | null>(null)
+  const [durationTick, setDurationTick] = useState(() => Date.now())
   const [editingQueueItemId, setEditingQueueItemId] = useState<string | null>(
     null
   )
@@ -205,6 +208,17 @@ export function CompilerWorkbench() {
   useEffect(() => {
     jobIdRef.current = jobId
   }, [jobId])
+
+  useEffect(() => {
+    if (state !== 'running' || buildStartedAt === null) return
+
+    setDurationTick(Date.now())
+    const timer = window.setInterval(() => {
+      setDurationTick(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [buildStartedAt, state])
 
   useEffect(() => {
     const preset = buildQueuePresets.find(
@@ -276,6 +290,7 @@ export function CompilerWorkbench() {
         if (event.payload.job_id !== jobIdRef.current) return
 
         setState(event.payload.success ? 'success' : 'failed')
+        setBuildFinishedAt(Date.now())
         const queueItemId = runningQueueItemIdRef.current
         if (queueItemId) {
           updateBuildQueueItem(queueItemId, {
@@ -352,14 +367,23 @@ export function CompilerWorkbench() {
 
   async function startBuild() {
     const nextRequest = useCompilerStore.getState().request
+    const startedAt = Date.now()
     setRunningQueueItemId(null)
     runningQueueItemIdRef.current = null
     setStopQueueAfterCurrent(false)
     stopQueueAfterCurrentRef.current = false
+    setBuildStartedAt(startedAt)
+    setBuildFinishedAt(null)
+    setDurationTick(startedAt)
     setLogs([])
     setArtifacts([])
     setProgress(null)
-    await runBuildRequest(nextRequest)
+    await runBuildRequest(nextRequest, {
+      startedAt,
+      queueItemId: null,
+      queueItemName: queueItemLabel({ request: nextRequest }),
+      notifyOnComplete: true,
+    })
   }
 
   async function cancelBuild() {
@@ -376,6 +400,8 @@ export function CompilerWorkbench() {
     setStopQueueAfterCurrent(true)
     stopQueueAfterCurrentRef.current = true
     setState('idle')
+    setBuildStartedAt(null)
+    setBuildFinishedAt(null)
   }
 
   function addCurrentRequestToQueue() {
@@ -540,6 +566,9 @@ export function CompilerWorkbench() {
       const startedAt = Date.now()
       setRunningQueueItemId(item.id)
       runningQueueItemIdRef.current = item.id
+      setBuildStartedAt(startedAt)
+      setBuildFinishedAt(null)
+      setDurationTick(startedAt)
       updateBuildQueueItem(item.id, {
         status: 'running',
         message: t('compiler.queue.running'),
@@ -558,7 +587,12 @@ export function CompilerWorkbench() {
         ),
       ])
 
-      const result = await runBuildRequest(item.request)
+      const result = await runBuildRequest(item.request, {
+        startedAt,
+        queueItemId: item.id,
+        queueItemName: queueItemLabel(item),
+        notifyOnComplete: false,
+      })
       updateBuildQueueItem(item.id, {
         status: result.success ? 'success' : 'failed',
         message: result.message,
@@ -585,13 +619,33 @@ export function CompilerWorkbench() {
     })
   }
 
-  async function runBuildRequest(nextRequest: typeof request) {
+  async function runBuildRequest(
+    nextRequest: typeof request,
+    options: {
+      startedAt: number
+      queueItemId: string | null
+      queueItemName: string
+      notifyOnComplete: boolean
+    }
+  ) {
     setState('running')
     setProgress(null)
+    setBuildStartedAt(options.startedAt)
+    setBuildFinishedAt(null)
+    setDurationTick(options.startedAt)
     const resolved = await resolveSdks(nextRequest)
     if (!resolved) {
       const message = t('compiler.queue.sdkResolveFailed')
       setState('failed')
+      setBuildFinishedAt(Date.now())
+      if (options.notifyOnComplete) {
+        showBuildSummary({
+          name: options.queueItemName,
+          success: false,
+          message,
+          duration: formatDuration(Date.now() - options.startedAt),
+        })
+      }
       return { success: false, message }
     }
 
@@ -599,18 +653,42 @@ export function CompilerWorkbench() {
     if (result.status === 'error') {
       setState('failed')
       setLogs(current => [...current, systemLog('error', result.error)])
+      setBuildFinishedAt(Date.now())
+      if (options.notifyOnComplete) {
+        showBuildSummary({
+          name: options.queueItemName,
+          success: false,
+          message: result.error,
+          duration: formatDuration(Date.now() - options.startedAt),
+        })
+      }
       return { success: false, message: result.error }
     }
 
     setJobId(result.data.id)
     jobIdRef.current = result.data.id
-    if (runningQueueItemIdRef.current) {
-      updateBuildQueueItem(runningQueueItemIdRef.current, {
+    if (options.queueItemId) {
+      updateBuildQueueItem(options.queueItemId, {
         jobId: result.data.id,
       })
     }
 
-    return await waitForBuildFinished(result.data.id)
+    const finished = await waitForBuildFinished(result.data.id)
+    const finishedAt = Date.now()
+    setBuildFinishedAt(finishedAt)
+    if (options.notifyOnComplete) {
+      showBuildSummary({
+        name: options.queueItemName,
+        success: finished.success,
+        message: finished.message,
+        duration: formatDuration(finishedAt - options.startedAt),
+      })
+    }
+
+    return {
+      success: finished.success,
+      message: finished.message,
+    }
   }
 
   function waitForBuildFinished(activeJobId: string) {
@@ -688,6 +766,32 @@ export function CompilerWorkbench() {
     ])
     void notify(t('compiler.queue.summaryTitle'), message, {
       type: failedName ? 'error' : 'success',
+      duration: 8000,
+    })
+  }
+
+  function showBuildSummary({
+    name,
+    success,
+    message,
+    duration,
+  }: {
+    name: string
+    success: boolean
+    message: string
+    duration: string
+  }) {
+    const title = t('compiler.build.summaryTitle')
+    const content = success
+      ? t('compiler.build.summarySuccess', { name, duration })
+      : t('compiler.build.summaryFailed', { name, duration, message })
+
+    setLogs(current => [
+      ...current,
+      systemLog(success ? 'info' : 'error', content),
+    ])
+    void notify(title, content, {
+      type: success ? 'success' : 'error',
       duration: 8000,
     })
   }
@@ -1108,7 +1212,10 @@ export function CompilerWorkbench() {
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {item.request.configuration} ·{' '}
                           {item.request.package_mode}
-                          <QueueDurationText item={item} />
+                          <QueueDurationText
+                            item={item}
+                            currentTime={durationTick}
+                          />
                           {item.message ? ` · ${item.message}` : ''}
                         </div>
                       </div>
@@ -1250,6 +1357,11 @@ export function CompilerWorkbench() {
                 ? `${progress.current}/${progress.total} ${progress.label}`
                 : t('compiler.empty.noActiveBuild')}
             </div>
+            <BuildDurationText
+              startedAt={buildStartedAt}
+              finishedAt={buildFinishedAt}
+              currentTime={durationTick}
+            />
             {state === 'failed' && latestError ? (
               <ScrollArea className="h-20 overflow-hidden rounded-sm">
                 <div className="whitespace-pre-wrap break-words pr-2 text-xs text-destructive">
@@ -1452,24 +1564,50 @@ function queueItemLabel(item: {
   )
 }
 
-function queueItemDuration(item: {
-  startedAt: number | null
-  finishedAt: number | null
-}) {
-  if (!item.startedAt || !item.finishedAt) return ''
-  return formatDuration(item.finishedAt - item.startedAt)
+function queueItemDuration(
+  item: {
+    startedAt: number | null
+    finishedAt: number | null
+  },
+  currentTime: number
+) {
+  if (!item.startedAt) return ''
+  const endTime = item.finishedAt ?? currentTime
+  return formatDuration(endTime - item.startedAt)
 }
 
 function QueueDurationText({
   item,
+  currentTime,
 }: {
   item: { startedAt: number | null; finishedAt: number | null }
+  currentTime: number
 }) {
   const { t } = useTranslation()
-  const duration = queueItemDuration(item)
+  const duration = queueItemDuration(item, currentTime)
   if (!duration) return null
 
-  return <> · {t('compiler.queue.duration', { duration })}</>
+  return <> - {t('compiler.queue.duration', { duration })}</>
+}
+
+function BuildDurationText({
+  startedAt,
+  finishedAt,
+  currentTime,
+}: {
+  startedAt: number | null
+  finishedAt: number | null
+  currentTime: number
+}) {
+  const { t } = useTranslation()
+  if (!startedAt) return null
+
+  const duration = formatDuration((finishedAt ?? currentTime) - startedAt)
+  return (
+    <div className="text-xs text-muted-foreground">
+      {t('compiler.build.duration', { duration })}
+    </div>
+  )
 }
 
 function formatDuration(milliseconds: number) {

@@ -49,6 +49,8 @@ SDK resolution order is: extracted SDKs under `SDK Root\<version>\sdk`, download
 - The queue runs serially to avoid multiple CMake or SDK preparation steps writing into the same cache directories at once.
 - If a queue item fails, the queue stops so you can inspect the log and fix that plugin first.
 - Build logs are continuous for the whole queue and include the plugin name plus version list when each item starts.
+- Single builds now show elapsed time in the progress panel and pop a completion notification when they finish.
+- Queue runs still end with the summary notification after the last item finishes or the queue stops early.
 
 ## Build Logs
 
