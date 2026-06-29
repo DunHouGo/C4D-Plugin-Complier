@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { listen } from '@tauri-apps/api/event'
+import { emit, listen } from '@tauri-apps/api/event'
 import { useTranslation } from 'react-i18next'
 import {
   CheckCircle2,
@@ -65,6 +65,8 @@ const FALLBACK_SDK_VERSIONS: SdkVersionOption[] = [
     status: 'auto download',
   },
 ]
+
+const SDK_SOURCES_CHANGED_EVENT = 'sdk://sources-changed'
 
 interface SdkConfigPanelProps {
   variant?: 'sidebar' | 'settings'
@@ -196,6 +198,51 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    let didUnlisten = false
+    let unlisten: (() => void) | null = null
+
+    void listen(SDK_SOURCES_CHANGED_EVENT, () => {
+      void loadSdkConfig()
+    })
+      .then(nextUnlisten => {
+        unlisten = nextUnlisten
+        if (cancelled) {
+          safeUnlisten()
+        }
+      })
+      .catch(error => {
+        logger.warn('Failed to register SDK source change listener', {
+          error,
+        })
+      })
+
+    return () => {
+      cancelled = true
+      safeUnlisten()
+    }
+
+    function safeUnlisten() {
+      if (!unlisten || didUnlisten) {
+        return
+      }
+
+      didUnlisten = true
+      try {
+        Promise.resolve(unlisten()).catch(error => {
+          logger.warn('Failed to unregister SDK source change listener', {
+            error,
+          })
+        })
+      } catch (error) {
+        logger.warn('Failed to unregister SDK source change listener', {
+          error,
+        })
+      }
+    }
+  }, [loadSdkConfig])
+
   async function saveRootConfig() {
     try {
       const result = await commands.saveSdkRootConfig({
@@ -203,7 +250,7 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
       })
       if (result.status === 'ok') {
         setSdkRoot(result.data.sdk_root ?? '')
-        await loadSdkConfig()
+        await emit(SDK_SOURCES_CHANGED_EVENT, null)
         setMessage(t('sdk.savedRoot'))
       } else {
         setMessage(result.error)
@@ -275,6 +322,7 @@ export function SdkConfigPanel({ variant = 'sidebar' }: SdkConfigPanelProps) {
         applySdkVersions(result.data.versions, result.data.prepared_versions)
         setSetupReport(result.data)
         setMessage(result.data.summary)
+        await emit(SDK_SOURCES_CHANGED_EVENT, null)
         setSetupProgress(current => {
           const last = current.at(-1)
           if (last?.stage === 'complete') {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
@@ -79,6 +79,8 @@ const LOG_CATEGORY_FILTERS: LogCategoryFilter[] = [
   'package',
   'system',
 ]
+
+const SDK_SOURCES_CHANGED_EVENT = 'sdk://sources-changed'
 
 export function CompilerWorkbench() {
   const { t } = useTranslation()
@@ -193,6 +195,36 @@ export function CompilerWorkbench() {
     [sdkVersions]
   )
 
+  const refreshEnvironment = useCallback(async () => {
+    const result = await commands.detectEnvironment()
+    if (result.status === 'ok') {
+      setEnvironment(result.data)
+      return
+    }
+
+    setLogs(current => [...current, systemLog('error', result.error)])
+  }, [])
+
+  const refreshSdkVersions = useCallback(async () => {
+    const result = await commands.listSdkVersions()
+    if (result.status === 'ok') {
+      setSdkVersions(result.data)
+      syncBuildVersionsFromSdkOptions(
+        result.data,
+        sdkStartVersionRef.current,
+        setSdkStartVersion,
+        setBuildVersions
+      )
+      return
+    }
+
+    setLogs(current => [...current, systemLog('error', result.error)])
+  }, [setBuildVersions, setSdkStartVersion])
+
+  const refreshCompilerSources = useCallback(async () => {
+    await Promise.all([refreshEnvironment(), refreshSdkVersions()])
+  }, [refreshEnvironment, refreshSdkVersions])
+
   useEffect(() => {
     sdkStartVersionRef.current = sdkStartVersion
   }, [sdkStartVersion])
@@ -239,32 +271,7 @@ export function CompilerWorkbench() {
   }, [autoScrollLogs, filteredLogs.length])
 
   useEffect(() => {
-    async function loadInitialEnvironment() {
-      const result = await commands.detectEnvironment()
-      if (result.status === 'ok') {
-        setEnvironment(result.data)
-      } else {
-        setLogs(current => [...current, systemLog('error', result.error)])
-      }
-    }
-
-    async function loadInitialSdkVersions() {
-      const result = await commands.listSdkVersions()
-      if (result.status === 'ok') {
-        setSdkVersions(result.data)
-        syncBuildVersionsFromSdkOptions(
-          result.data,
-          sdkStartVersionRef.current,
-          setSdkStartVersion,
-          setBuildVersions
-        )
-      } else {
-        setLogs(current => [...current, systemLog('error', result.error)])
-      }
-    }
-
-    void loadInitialEnvironment()
-    void loadInitialSdkVersions()
+    void refreshCompilerSources()
 
     const unlisten = Promise.all([
       listen<BuildLogEvent>('build://log', event => {
@@ -305,6 +312,9 @@ export function CompilerWorkbench() {
           buildFinishedResolverRef.current = null
         }
       }),
+      listen(SDK_SOURCES_CHANGED_EVENT, () => {
+        void refreshCompilerSources()
+      }),
     ])
 
     return () => {
@@ -328,31 +338,13 @@ export function CompilerWorkbench() {
           logger.warn('Failed to resolve build event listeners', { error })
         })
     }
-  }, [addArtifact, setBuildVersions, setSdkStartVersion, updateBuildQueueItem])
-
-  async function refreshSdkVersions() {
-    const result = await commands.listSdkVersions()
-    if (result.status === 'ok') {
-      setSdkVersions(result.data)
-      syncBuildVersionsFromSdkOptions(
-        result.data,
-        sdkStartVersionRef.current,
-        setSdkStartVersion,
-        setBuildVersions
-      )
-    } else {
-      setLogs(current => [...current, systemLog('error', result.error)])
-    }
-  }
-
-  async function refreshEnvironment() {
-    const result = await commands.detectEnvironment()
-    if (result.status === 'ok') {
-      setEnvironment(result.data)
-    } else {
-      setLogs(current => [...current, systemLog('error', result.error)])
-    }
-  }
+  }, [
+    addArtifact,
+    refreshCompilerSources,
+    setBuildVersions,
+    setSdkStartVersion,
+    updateBuildQueueItem,
+  ])
 
   async function resolveSdks(nextRequest = request) {
     const result = await commands.resolveSdkVersions(nextRequest)

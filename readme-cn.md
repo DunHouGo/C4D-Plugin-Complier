@@ -15,7 +15,7 @@ C4D Plugin Compiler 是一个基于 Rust 和 Tauri 2 的 Cinema 4D C++ 插件编
 - One-click Setup：创建 SDK 根目录，下载所需的 Maxon 官方 SDK zip，先解压到临时目录校验，再写入对应版本缓存；下载或解压失败会显示在检查报告中，不会留下半截缓存。
 - Save：保存当前 SDK 根目录到用户配置目录中的 `sdk_sources.json`。未保存过配置时会使用当前系统的文档目录；仓库内旧的 `configs/sdk_sources.json` 仅在旧检出中存在时作为兼容读取，不会在运行时写入。
 - Refresh：重新读取 SDK 根目录、本机 Cinema 4D 安装和可用 SDK 列表。
-- SDK Matrix：可用 SDK 版本列表。已解压的 SDK root 和本地 SDK 压缩包会被视为可构建来源并显示为就绪状态；仅有官方下载地址的版本会保留在矩阵中用于一键配置和构建时下载。本机安装目录中的 `sdk.zip` 只作为没有官方扩展 SDK URL 时的兼容兜底来源。
+- SDK Matrix：可用 SDK 版本列表。已解压的 SDK root 和本地 SDK 压缩包会被视为可构建来源并显示为就绪状态；仅有官方下载地址的版本会保留在矩阵中用于一键配置和构建时下载。本机安装目录中的 `sdk.zip` 只作为没有官方扩展 SDK URL 时的兼容兜底来源。完成一键配置或保存 SDK 根目录后，工作台会自动重新刷新版本列表，灰色版本通常会立即恢复为可选。
 - 无效 SDK 压缩包：如果 SDK Matrix 显示 `invalid configured archive` 或 `invalid installed sdk.zip`，表示该 zip 损坏或不是完整 zip。它不会进入构建队列，请删除或替换对应压缩包后刷新。
 - Installed C4D：本机 Cinema 4D 安装检测结果，并显示每个大版本对应的 SDK 版本。
 

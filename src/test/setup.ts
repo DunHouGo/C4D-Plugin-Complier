@@ -2,6 +2,11 @@ import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 
 // Mock matchMedia for tests
+Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
+  writable: true,
+  value: vi.fn(),
+})
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation(query => ({
@@ -17,9 +22,32 @@ Object.defineProperty(window, 'matchMedia', {
 })
 
 // Mock Tauri APIs for tests
+const tauriEventListeners = new Map<string, Set<(event: { payload: unknown }) => void>>()
+
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {
-    // Mock unlisten function
+  listen: vi.fn((eventName: string, handler: (event: { payload: unknown }) => void) => {
+    const handlers = tauriEventListeners.get(eventName) ?? new Set()
+    handlers.add(handler)
+    tauriEventListeners.set(eventName, handlers)
+
+    return Promise.resolve(() => {
+      handlers.delete(handler)
+      if (handlers.size === 0) {
+        tauriEventListeners.delete(eventName)
+      }
+    })
+  }),
+  emit: vi.fn(async (eventName: string, payload: unknown) => {
+    const handlers = tauriEventListeners.get(eventName)
+    if (!handlers) {
+      return
+    }
+
+    for (const handler of handlers) {
+      await handler({
+        payload,
+      } as { payload: unknown })
+    }
   }),
 }))
 
