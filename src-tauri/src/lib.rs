@@ -57,7 +57,12 @@ pub fn run() {
     // 更新插件用于应用内检查更新。
     #[cfg(desktop)]
     {
-        app_builder = app_builder.plugin(tauri_plugin_updater::Builder::new().build());
+        app_builder = app_builder.plugin(
+            tauri_plugin_updater::Builder::new()
+                .header("User-Agent", utils::download::DOWNLOAD_USER_AGENT)
+                .expect("updater user-agent header should be valid")
+                .build(),
+        );
     }
 
     app_builder = app_builder

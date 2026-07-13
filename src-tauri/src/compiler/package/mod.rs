@@ -221,7 +221,11 @@ mod tests {
 
         let package = temp.path().join("dist").join("BackHighlight_2026");
         assert!(package.join("postwatermark.xdl64").is_file());
-        assert!(package.join("libs").join("shared").join("helper.txt").is_file());
+        assert!(package
+            .join("libs")
+            .join("shared")
+            .join("helper.txt")
+            .is_file());
     }
 
     #[test]
@@ -256,8 +260,8 @@ mod tests {
         .unwrap();
 
         let package = temp.path().join("dist").join("BackHighlight");
-        assert!(package.join("postwatermark 2025.xdl64").is_file());
-        assert!(package.join("postwatermark 2026.xdl64").is_file());
+        assert!(package.join("BackHighlight 2025.xdl64").is_file());
+        assert!(package.join("BackHighlight 2026.xdl64").is_file());
     }
 
     #[test]

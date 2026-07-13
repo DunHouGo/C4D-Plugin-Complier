@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
+use reqwest::header::ACCEPT;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use walkdir::WalkDir;
@@ -17,6 +17,7 @@ use crate::types::{
     SdkRootConfig, SdkSetupProgressEvent, SdkSetupReport, SdkSourceConfig, SdkSourceOverride,
     SdkVersionOption,
 };
+use crate::utils::download::configure_blocking_client;
 
 mod config;
 mod installed;
@@ -667,13 +668,12 @@ fn download_sdk(
         })?;
     }
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(900))
-        .user_agent("C4D Plugin Compiler")
+    let client = configure_blocking_client(reqwest::blocking::Client::builder())
         .build()
         .map_err(|error| format!("Failed to create HTTP client: {error}"))?;
     let mut response = client
         .get(download_url)
+        .header(ACCEPT, "application/octet-stream,*/*")
         .send()
         .map_err(|error| format!("Failed to download {download_url}: {error}"))?;
     log::info!(

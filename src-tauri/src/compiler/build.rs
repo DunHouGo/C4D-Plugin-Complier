@@ -161,6 +161,7 @@ pub fn execute_build(
                 let legacy_binary_name = build_legacy_target_with_retry(
                     &sdk_root,
                     configuration,
+                    &legacy_module.module_path,
                     &legacy_module.build_name,
                     log,
                     job_id,
@@ -590,6 +591,7 @@ fn prepare_legacy_module_workspace(
 
 struct LegacyModule {
     build_name: String,
+    module_path: String,
     solution_entry: String,
 }
 
@@ -606,6 +608,7 @@ fn resolve_legacy_module(
     {
         return Ok(LegacyModule {
             build_name: requested_module_name.to_string(),
+            module_path: requested_module_name.to_string(),
             solution_entry: format!("plugins/{requested_module_name}"),
         });
     }
@@ -635,6 +638,7 @@ fn resolve_legacy_module(
             ),
         );
         return Ok(LegacyModule {
+            module_path: format!("{requested_module_name}/{build_name}"),
             solution_entry: format!("plugins/{requested_module_name}/{build_name}"),
             build_name,
         });
@@ -741,11 +745,19 @@ fn prepare_legacy_framework_generated_files(
 fn build_legacy_target_with_retry(
     sdk_root: &Path,
     configuration: &str,
-    module_name: &str,
+    module_path: &str,
+    target_name: &str,
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<String, String> {
-    match build_legacy_target(sdk_root, configuration, module_name, log, job_id) {
+    match build_legacy_target(
+        sdk_root,
+        configuration,
+        module_path,
+        target_name,
+        log,
+        job_id,
+    ) {
         Ok(binary_name) => Ok(binary_name),
         Err(error) if is_missing_legacy_generated_file_error(&error) => {
             log_warn(
@@ -755,7 +767,14 @@ fn build_legacy_target_with_retry(
                 "Legacy SDK generated files are missing; running the source processor before retrying",
             );
             recover_legacy_generated_files(sdk_root, &error, log, job_id)?;
-            build_legacy_target(sdk_root, configuration, module_name, log, job_id)
+            build_legacy_target(
+                sdk_root,
+                configuration,
+                module_path,
+                target_name,
+                log,
+                job_id,
+            )
         }
         Err(error) => Err(error),
     }
@@ -764,14 +783,15 @@ fn build_legacy_target_with_retry(
 fn build_legacy_target(
     sdk_root: &Path,
     configuration: &str,
-    module_name: &str,
+    module_path: &str,
+    target_name: &str,
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        let project = resolve_legacy_xcode_project(sdk_root, module_name, log, job_id)?;
-        let scheme = resolve_legacy_xcode_scheme(&project, module_name, log, job_id)?;
+        let project = resolve_legacy_xcode_project(sdk_root, module_path, log, job_id)?;
+        let scheme = resolve_legacy_xcode_scheme(&project, target_name, log, job_id)?;
         prepare_legacy_module_generated_file(sdk_root, &project, log, job_id)?;
         let shim_dir = prepare_python_shim()?;
         let args = vec![
@@ -796,12 +816,12 @@ fn build_legacy_target(
             log,
             job_id,
         )?;
-        Ok(scheme)
+        Ok(target_name.to_string())
     }
 
     #[cfg(target_os = "windows")]
     {
-        let project = resolve_legacy_visual_studio_project(sdk_root, module_name)?;
+        let project = resolve_legacy_visual_studio_project(sdk_root, target_name)?;
         let msbuild = find_msbuild_path()?;
         let args = vec![
             project.display().to_string(),
@@ -812,12 +832,19 @@ fn build_legacy_target(
             "/nologo".to_string(),
         ];
         run_command(&msbuild.display().to_string(), &args, sdk_root, log, job_id)?;
-        Ok(module_name.to_string())
+        Ok(target_name.to_string())
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
-        let _ = (sdk_root, configuration, module_name, log, job_id);
+        let _ = (
+            sdk_root,
+            configuration,
+            module_path,
+            target_name,
+            log,
+            job_id,
+        );
         Err("Legacy SDK builds are currently supported on Windows and macOS".to_string())
     }
 }
@@ -825,14 +852,18 @@ fn build_legacy_target(
 #[cfg(target_os = "macos")]
 fn resolve_legacy_xcode_project(
     sdk_root: &Path,
-    module_name: &str,
+    module_path: &str,
     log: LogCallback<'_>,
     job_id: &str,
 ) -> Result<PathBuf, String> {
-    let module_root = sdk_root.join("plugins").join(module_name);
+    let module_root = sdk_root.join("plugins").join(module_path);
+    let target_name = Path::new(module_path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| format!("Invalid legacy module path: {module_path}"))?;
     let direct_project = module_root
         .join("project")
-        .join(format!("{module_name}.xcodeproj"));
+        .join(format!("{target_name}.xcodeproj"));
     if direct_project.is_dir() {
         return Ok(direct_project);
     }
@@ -854,7 +885,7 @@ fn resolve_legacy_xcode_project(
     if let Some(project) = projects.iter().find(|path| {
         path.file_stem()
             .and_then(|value| value.to_str())
-            .is_some_and(|stem| stem.eq_ignore_ascii_case(module_name))
+            .is_some_and(|stem| stem.eq_ignore_ascii_case(target_name))
     }) {
         return Ok(project.clone());
     }
@@ -2136,9 +2167,28 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
 
         let log = |_event: BuildLogEvent| {};
-        let resolved = resolve_legacy_xcode_project(sdk.path(), "Draw.back", &log, "test").unwrap();
+        let resolved =
+            resolve_legacy_xcode_project(sdk.path(), "Draw.back/draw.back", &log, "test").unwrap();
 
         assert_eq!(resolved, project);
+    }
+
+    #[test]
+    fn legacy_module_tracks_nested_module_path_separately_from_target_name() {
+        let plugin = TempTree::new("c4d-nested-legacy-plugin");
+        let module_root = plugin.path().join("draw.back");
+        std::fs::create_dir_all(module_root.join("project")).unwrap();
+        std::fs::write(
+            module_root.join("project").join("projectdefinition.txt"),
+            "Type=DLL",
+        )
+        .unwrap();
+
+        let log = |_event: BuildLogEvent| {};
+        let module = resolve_legacy_module(plugin.path(), "BackHighlight", &log, "test").unwrap();
+
+        assert_eq!(module.build_name, "draw.back");
+        assert_eq!(module.module_path, "BackHighlight/draw.back");
     }
 
     #[test]

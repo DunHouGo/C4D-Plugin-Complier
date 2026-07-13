@@ -106,7 +106,12 @@ mod tests {
     fn copy_resources_prefers_built_res_over_plugin_root_res() {
         let temp = TempTree::new("c4d-package-res-priority");
         let plugin_root = temp.path().join("Plugin");
-        let binary = temp.path().join("build").join("bin").join("Release").join("Plugin.xdl64");
+        let binary = temp
+            .path()
+            .join("build")
+            .join("bin")
+            .join("Release")
+            .join("Plugin.xdl64");
         let package_dir = temp.path().join("dist");
         let built_res = binary.parent().unwrap().join("res");
         let root_res = plugin_root.join("res");

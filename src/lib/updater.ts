@@ -14,6 +14,7 @@ interface UpdateCheckOptions {
 }
 
 const STARTUP_RETRY_DELAYS_MS = [5_000, 30_000, 120_000]
+const UPDATE_PROGRESS_LOG_INTERVAL_BYTES = 8 * 1024 * 1024
 
 /**
  * Check, prompt, download, install, and optionally relaunch the app.
@@ -58,8 +59,9 @@ export async function checkAndInstallUpdate({
       return 'cancelled'
     }
 
+    const downloadLogger = createDownloadEventLogger()
     await update.downloadAndInstall(event => {
-      logDownloadEvent(event)
+      downloadLogger(event)
     })
 
     logger.info('Update installed successfully', {
@@ -130,16 +132,30 @@ export function scheduleStartupUpdateChecks(): () => void {
   }
 }
 
-function logDownloadEvent(event: DownloadEvent): void {
-  switch (event.event) {
-    case 'Started':
-      logger.info(`Downloading ${event.data.contentLength} bytes`)
-      break
-    case 'Progress':
-      logger.info(`Downloaded: ${event.data.chunkLength} bytes`)
-      break
-    case 'Finished':
-      logger.info('Download complete, installing...')
-      break
+function createDownloadEventLogger(): (event: DownloadEvent) => void {
+  let downloadedBytes = 0
+  let lastLoggedBytes = 0
+
+  return event => {
+    switch (event.event) {
+      case 'Started':
+        downloadedBytes = 0
+        lastLoggedBytes = 0
+        logger.info(`Downloading ${event.data.contentLength} bytes`)
+        break
+      case 'Progress':
+        downloadedBytes += event.data.chunkLength
+        if (
+          downloadedBytes - lastLoggedBytes >=
+          UPDATE_PROGRESS_LOG_INTERVAL_BYTES
+        ) {
+          lastLoggedBytes = downloadedBytes
+          logger.info(`Downloaded: ${downloadedBytes} bytes`)
+        }
+        break
+      case 'Finished':
+        logger.info('Download complete, installing...')
+        break
+    }
   }
 }

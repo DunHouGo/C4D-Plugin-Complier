@@ -24,7 +24,7 @@ SDK 解析顺序为：`SDK Root\<version>\sdk` 中已解压的 SDK、`SDK Root\<
 ## 构建参数
 
 - Plugin Root：插件源码根目录，通常包含 `project/`、`source/` 和可选的 `res/`。支持目录选择和拖拽。选择后会自动根据路径最后一级目录名预填 `Package`。
-- Package：发布包名称和输出插件目录名称。SDK 模块名会保持和官方插件结构一致：`sdk_custom_paths.txt` 可以提供 `postwatermark` 这类模块别名，直接插件根目录使用其模块文件夹名，单个嵌套 SDK 模块例如 `BackHighlight/draw.back/project/projectdefinition.txt` 会作为实际 CMake target。打包后的二进制文件保留官方模块文件名，例如 `postwatermark.xdl64`。
+- Package：发布包名称和输出插件目录名称。SDK 模块名会保持和官方插件结构一致：`sdk_custom_paths.txt` 可以提供 `postwatermark` 这类模块别名，直接插件根目录使用其模块文件夹名，单个嵌套 SDK 模块例如 `BackHighlight/draw.back/project/projectdefinition.txt` 会作为实际构建 target。2024.4 legacy SDK 会保留完整的嵌套路径来生成和定位 Xcode 工程。打包后的二进制文件保留官方模块文件名，例如 `postwatermark.xdl64`。
 - C4D Versions：由 SDK Sources 中的起始版本自动生成的版本标签。自动选择只包含本地已解析的 SDK root 或 SDK 压缩包，例如没有安装或配置 2025 时，构建队列会跳过 2025。
 - Configuration：构建模式，可选 `Debug`、`Release` 或 `Both`。
 - Package Mode：打包模式，可选 `Merged`、`Per Version` 或 `Both`。Merged 会保留一个总输出目录，并把每个版本/配置的二进制直接放入其中；Per Version 则为每个版本生成独立顶层目录。
