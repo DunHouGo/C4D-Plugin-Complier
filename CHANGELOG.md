@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 修复原生 CMake 插件的包名与 `maxon_targetName` 不一致时构建不存在的 Visual Studio 工程的问题：构建命令现在读取 `CMakeLists.txt` 中的真实 target，例如将 `Boghma-WaterMark` 正确映射到 `Boghma_WaterMark`。
+- 修复 Windows legacy SDK 的 `projecttool` 扫描嵌套插件外层目录时因缺少 Solution 定义而崩溃的问题：生成工程前会在 SDK 临时工作区为嵌套模块容器补充标准 `projectdefinition.txt`，macOS 构建流程保持不变。
 - 修复 `Merged` 打包模式忽略包名的问题：合并包内的构建文件现在使用“包名 + 主版本号”格式，例如 `BackHighlight 2024.xlib`。
 - 修复 Cinema 4D 2024.4 legacy SDK 编译嵌套模块时错误从 `plugins/<模块名>` 查找 Xcode 工程的问题：现在会保留完整的嵌套模块路径，并以实际模块名选择构建 scheme 和产物，支持 `BackHighlight/draw.back` 这类插件结构。
 - 优化应用内下载速度：HTTP 下载客户端现在启用系统代理和 HTTP/2，并减少更新下载时的逐块日志写入，避免同一链接在应用内明显慢于浏览器。

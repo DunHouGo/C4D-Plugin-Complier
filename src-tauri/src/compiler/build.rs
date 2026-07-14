@@ -469,6 +469,21 @@ fn resolve_cmake_build_module_name(
 ) -> Result<String, String> {
     let direct_project = plugin_root.join("project").join("projectdefinition.txt");
     let direct_cmake_project = plugin_root.join("project").join("CMakeLists.txt");
+    if direct_cmake_project.is_file() {
+        if let Some(target_name) = native_cmake_target_name(&direct_cmake_project)? {
+            if target_name != requested_module_name {
+                log_warn(
+                    log,
+                    job_id,
+                    "cmake",
+                    &format!(
+                        "Using native CMake target '{target_name}' instead of module alias '{requested_module_name}'"
+                    ),
+                );
+            }
+            return Ok(target_name);
+        }
+    }
     if direct_project.is_file() || direct_cmake_project.is_file() {
         return Ok(requested_module_name.to_string());
     }
@@ -699,6 +714,7 @@ fn generate_legacy_projects(
 
     #[cfg(target_os = "windows")]
     {
+        repair_legacy_nested_module_containers(sdk_root, log, job_id)?;
         let project_tool = legacy_project_tool_path(sdk_root)?;
         let args = vec![format!("g_updateproject={}", sdk_root.display())];
         log_warn(
@@ -721,6 +737,123 @@ fn generate_legacy_projects(
         let _ = (sdk_root, log, job_id);
         Err("Legacy SDK builds are currently supported on Windows and macOS".to_string())
     }
+}
+
+fn native_cmake_target_name(cmake_file: &Path) -> Result<Option<String>, String> {
+    let text = std::fs::read_to_string(cmake_file)
+        .map_err(|error| format!("Failed to read {}: {error}", cmake_file.display()))?;
+    let lower = text.to_ascii_lowercase();
+    let mut offset = 0;
+
+    while let Some(index) = lower[offset..].find("set(") {
+        let body_start = offset + index + "set(".len();
+        let Some(body_end_offset) = text[body_start..].find(')') else {
+            break;
+        };
+        let body_end = body_start + body_end_offset;
+        let mut values = text[body_start..body_end].split_whitespace();
+        if values
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case("maxon_targetName"))
+        {
+            return Ok(values
+                .next()
+                .map(|value| value.trim_matches(['\'', '"']).to_string())
+                .filter(|value| !value.is_empty()));
+        }
+        offset = body_end + 1;
+    }
+
+    Ok(None)
+}
+
+#[cfg(target_os = "windows")]
+fn repair_legacy_nested_module_containers(
+    sdk_root: &Path,
+    log: LogCallback<'_>,
+    job_id: &str,
+) -> Result<(), String> {
+    let plugins_root = sdk_root.join("plugins");
+    for entry in std::fs::read_dir(&plugins_root)
+        .map_err(|error| format!("Failed to read {}: {error}", plugins_root.display()))?
+    {
+        let entry = entry.map_err(|error| {
+            format!(
+                "Failed to inspect an entry in {}: {error}",
+                plugins_root.display()
+            )
+        })?;
+        let container = entry.path();
+        if !container.is_dir()
+            || container
+                .join("project")
+                .join("projectdefinition.txt")
+                .is_file()
+        {
+            continue;
+        }
+
+        let mut nested_modules = std::fs::read_dir(&container)
+            .map_err(|error| format!("Failed to read {}: {error}", container.display()))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.join("project").join("projectdefinition.txt").is_file())
+            .collect::<Vec<_>>();
+        nested_modules.sort();
+        if nested_modules.is_empty() {
+            continue;
+        }
+
+        let definition = nested_container_solution_definition(&plugins_root, &nested_modules)?;
+        let project_dir = container.join("project");
+        std::fs::create_dir_all(&project_dir)
+            .map_err(|error| format!("Failed to create {}: {error}", project_dir.display()))?;
+        let definition_path = project_dir.join("projectdefinition.txt");
+        std::fs::write(&definition_path, definition)
+            .map_err(|error| format!("Failed to write {}: {error}", definition_path.display()))?;
+        log_warn(
+            log,
+            job_id,
+            "toolchain",
+            &format!(
+                "Created a legacy container solution for nested modules under {}",
+                container.display()
+            ),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn nested_container_solution_definition(
+    plugins_root: &Path,
+    nested_modules: &[PathBuf],
+) -> Result<String, String> {
+    let entries = nested_modules
+        .iter()
+        .map(|module| {
+            module
+                .strip_prefix(plugins_root)
+                .map(|relative| {
+                    format!(
+                        "plugins/{}",
+                        relative.display().to_string().replace('\\', "/")
+                    )
+                })
+                .map_err(|error| {
+                    format!(
+                        "Nested module {} is outside {}: {error}",
+                        module.display(),
+                        plugins_root.display()
+                    )
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(format!(
+        "Platform=Win64;OSX;Linux\n\nType=Solution\n\nSolution=\\\n\t{}\n",
+        entries.join(";\\\n\t")
+    ))
 }
 
 fn prepare_legacy_framework_generated_files(
@@ -821,6 +954,7 @@ fn build_legacy_target(
 
     #[cfg(target_os = "windows")]
     {
+        let _ = module_path;
         let project = resolve_legacy_visual_studio_project(sdk_root, target_name)?;
         let msbuild = find_msbuild_path()?;
         let args = vec![
@@ -1911,6 +2045,36 @@ mod tests {
     }
 
     #[test]
+    fn cmake_build_module_name_uses_native_cmake_target() {
+        let plugin = TempTree::new("c4d-native-cmake-plugin");
+        std::fs::create_dir_all(plugin.path().join("project")).unwrap();
+        std::fs::write(
+            plugin.path().join("project").join("CMakeLists.txt"),
+            "set(maxon_targetName Boghma_WaterMark)\n",
+        )
+        .unwrap();
+
+        let log = |_event: BuildLogEvent| {};
+        let resolved =
+            resolve_cmake_build_module_name(plugin.path(), "Boghma-WaterMark", &log, "test")
+                .unwrap();
+
+        assert_eq!(resolved, "Boghma_WaterMark");
+    }
+
+    #[test]
+    fn native_cmake_target_name_supports_multiline_and_quotes() {
+        let plugin = TempTree::new("c4d-native-cmake-target");
+        let cmake_file = plugin.path().join("CMakeLists.txt");
+        std::fs::write(&cmake_file, "set(\n  maxon_targetName \"Draw_Back\"\n)\n").unwrap();
+
+        assert_eq!(
+            native_cmake_target_name(&cmake_file).unwrap(),
+            Some("Draw_Back".to_string())
+        );
+    }
+
+    #[test]
     fn requested_module_name_prefers_sdk_custom_paths_module() {
         let plugin = TempTree::new("c4d-custom-paths-module");
         std::fs::write(
@@ -2059,6 +2223,22 @@ mod tests {
         assert!(!target.path().join(".git").exists());
         assert!(!target.path().join("dist").exists());
         assert!(!target.path().join("dist-test-debug").exists());
+    }
+
+    #[test]
+    fn nested_container_solution_lists_nested_modules_with_portable_paths() {
+        let plugins = PathBuf::from("sdk").join("plugins");
+        let modules = vec![
+            plugins.join("BackHighlight").join("draw.back"),
+            plugins.join("BackHighlight").join("selection.back"),
+        ];
+
+        let definition = nested_container_solution_definition(&plugins, &modules).unwrap();
+
+        assert_eq!(
+            definition,
+            "Platform=Win64;OSX;Linux\n\nType=Solution\n\nSolution=\\\n\tplugins/BackHighlight/draw.back;\\\n\tplugins/BackHighlight/selection.back\n"
+        );
     }
 
     #[test]
